@@ -112,8 +112,14 @@ public final class RelvenPlanImporter {
       if (!Collections.disjoint(restDates, workoutDates)) {
         throw invalid("rest and workout on the same date");
       }
-      return new Plan(id, name, timezone, List.copyOf(days), Map.copyOf(workouts),
-          Map.copyOf(workoutNames), json);
+      return new Plan(
+          id,
+          name,
+          timezone,
+          List.copyOf(days),
+          Map.copyOf(workouts),
+          Map.copyOf(workoutNames),
+          json);
     } catch (JSONException error) {
       throw new IllegalArgumentException("Invalid Relven plan JSON", error);
     }

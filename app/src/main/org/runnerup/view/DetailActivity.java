@@ -404,7 +404,8 @@ public class DetailActivity extends AppCompatActivity implements Constants {
     for (int i = 0; i < tabContents.size(); i++) {
       tabContents.get(i).setVisibility(i == selectedPosition ? View.VISIBLE : View.GONE);
     }
-    if (mapWrapper != null && !mapInitialized
+    if (mapWrapper != null
+        && !mapInitialized
         && tabContents.get(selectedPosition).getId() == R.id.tab_map) {
       mapWrapper.onCreate(mapSavedInstanceState);
       mapInitialized = true;

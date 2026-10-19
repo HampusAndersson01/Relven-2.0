@@ -21,8 +21,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.XYTileSource;
-import org.osmdroid.util.GeoPoint;
 import org.osmdroid.util.BoundingBox;
+import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.CustomZoomButtonsController;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
@@ -35,9 +35,10 @@ import org.runnerup.relven.map.RouteMetrics;
 public class MapWrapper {
   private static final String[] MODES = {"Route", "Pace", "Speed", "Heart rate", "Elevation"};
   private static final int[] RAMP = {
-      Color.rgb(219, 77, 74), Color.rgb(226, 133, 63), Color.rgb(229, 184, 67),
-      Color.rgb(172, 197, 80), Color.rgb(91, 190, 116), Color.rgb(38, 173, 150),
-      Color.rgb(36, 149, 193)};
+    Color.rgb(219, 77, 74), Color.rgb(226, 133, 63), Color.rgb(229, 184, 67),
+    Color.rgb(172, 197, 80), Color.rgb(91, 190, 116), Color.rgb(38, 173, 150),
+    Color.rgb(36, 149, 193)
+  };
   private static final int ROUTE_COLOR = Color.rgb(41, 187, 169);
   private static final int MISSING_COLOR = Color.rgb(150, 155, 160);
   private final SQLiteDatabase database;
@@ -49,8 +50,12 @@ public class MapWrapper {
   private TextView legend;
   private RouteData route;
 
-  public MapWrapper(Context context, SQLiteDatabase database, long activityId,
-      Formatter formatter, Object mapView) {
+  public MapWrapper(
+      Context context,
+      SQLiteDatabase database,
+      long activityId,
+      Formatter formatter,
+      Object mapView) {
     this.database = database;
     this.activityId = activityId;
     this.mapView = (MapView) mapView;
@@ -60,41 +65,56 @@ public class MapWrapper {
 
   public void onCreate(Bundle savedInstanceState) {
     Configuration.getInstance().setUserAgentValue("se.hampusandersson.relven");
-    mapView.setTileSource(new XYTileSource("OpenStreetMap", 0, 19, 256, ".png",
-        new String[]{"https://tile.openstreetmap.org/"}));
-    mapView.getZoomController().setVisibility(CustomZoomButtonsController.Visibility.SHOW_AND_FADEOUT);
+    mapView.setTileSource(
+        new XYTileSource(
+            "OpenStreetMap", 0, 19, 256, ".png", new String[] {"https://tile.openstreetmap.org/"}));
+    mapView
+        .getZoomController()
+        .setVisibility(CustomZoomButtonsController.Visibility.SHOW_AND_FADEOUT);
     mapView.setMultiTouchControls(true);
     selector = mapView.getRootView().findViewById(R.id.route_metric_selector);
     legend = mapView.getRootView().findViewById(R.id.route_metric_legend);
-    mapView.getRootView().findViewById(R.id.route_recenter).setOnClickListener(
-        view -> {
-          if (route != null && route.first() != null) mapView.getController().setCenter(route.first());
-        });
+    mapView
+        .getRootView()
+        .findViewById(R.id.route_recenter)
+        .setOnClickListener(
+            view -> {
+              if (route != null && route.first() != null)
+                mapView.getController().setCenter(route.first());
+            });
     mapView.getRootView().findViewById(R.id.route_fit).setOnClickListener(view -> fitRoute());
-    selector.setAdapter(new ArrayAdapter<>(mapView.getContext(),
-        android.R.layout.simple_spinner_dropdown_item, MODES));
-    selector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-      @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-        if (route != null) render(position);
-      }
-      @Override public void onNothingSelected(AdapterView<?> parent) {}
-    });
-    executor.execute(() -> {
-      RouteData data = readRoute();
-      mapView.post(() -> {
-        route = data;
-        if (data.first() != null) {
-          mapView.getController().setZoom(15.0);
-          mapView.getController().setCenter(data.first());
-        }
-        render(selector.getSelectedItemPosition());
-      });
-    });
+    selector.setAdapter(
+        new ArrayAdapter<>(
+            mapView.getContext(), android.R.layout.simple_spinner_dropdown_item, MODES));
+    selector.setOnItemSelectedListener(
+        new AdapterView.OnItemSelectedListener() {
+          @Override
+          public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            if (route != null) render(position);
+          }
+
+          @Override
+          public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    executor.execute(
+        () -> {
+          RouteData data = readRoute();
+          mapView.post(
+              () -> {
+                route = data;
+                if (data.first() != null) {
+                  mapView.getController().setZoom(15.0);
+                  mapView.getController().setCenter(data.first());
+                }
+                render(selector.getSelectedItemPosition());
+              });
+        });
   }
 
   private record LapPoint(GeoPoint point, int lap) {}
-  private record RouteData(List<RouteMetrics.Segment> segments, List<LapPoint> laps,
-      GeoPoint first, GeoPoint last) {}
+
+  private record RouteData(
+      List<RouteMetrics.Segment> segments, List<LapPoint> laps, GeoPoint first, GeoPoint last) {}
 
   private RouteData readRoute() {
     List<RouteMetrics.Sample> samples = new ArrayList<>();
@@ -102,21 +122,41 @@ public class MapWrapper {
     GeoPoint first = null;
     GeoPoint last = null;
     int lastLap = -1;
-    String[] columns = {DB.LOCATION.LATITUDE, DB.LOCATION.LONGITUDE, DB.LOCATION.TIME,
-        DB.LOCATION.TYPE, DB.LOCATION.HR, DB.LOCATION.ALTITUDE, DB.LOCATION.LAP};
-    try (Cursor cursor = database.query(DB.LOCATION.TABLE, columns,
-        DB.LOCATION.ACTIVITY + "=?", new String[]{Long.toString(activityId)},
-        null, null, "_id")) {
+    String[] columns = {
+      DB.LOCATION.LATITUDE,
+      DB.LOCATION.LONGITUDE,
+      DB.LOCATION.TIME,
+      DB.LOCATION.TYPE,
+      DB.LOCATION.HR,
+      DB.LOCATION.ALTITUDE,
+      DB.LOCATION.LAP
+    };
+    try (Cursor cursor =
+        database.query(
+            DB.LOCATION.TABLE,
+            columns,
+            DB.LOCATION.ACTIVITY + "=?",
+            new String[] {Long.toString(activityId)},
+            null,
+            null,
+            "_id")) {
       while (cursor.moveToNext()) {
         if (cursor.isNull(0) || cursor.isNull(1) || cursor.isNull(2) || cursor.isNull(3)) continue;
         double latitude = cursor.getDouble(0);
         double longitude = cursor.getDouble(1);
         int type = cursor.getInt(3);
-        samples.add(new RouteMetrics.Sample(latitude, longitude, cursor.getLong(2), type,
-            cursor.isNull(4) ? null : cursor.getInt(4),
-            cursor.isNull(5) ? null : cursor.getDouble(5)));
-        if (type != DB.LOCATION.TYPE_GPS || !Double.isFinite(latitude)
-            || !Double.isFinite(longitude) || Math.abs(latitude) > 90
+        samples.add(
+            new RouteMetrics.Sample(
+                latitude,
+                longitude,
+                cursor.getLong(2),
+                type,
+                cursor.isNull(4) ? null : cursor.getInt(4),
+                cursor.isNull(5) ? null : cursor.getDouble(5)));
+        if (type != DB.LOCATION.TYPE_GPS
+            || !Double.isFinite(latitude)
+            || !Double.isFinite(longitude)
+            || Math.abs(latitude) > 90
             || Math.abs(longitude) > 180) continue;
         GeoPoint point = new GeoPoint(latitude, longitude);
         if (first == null) first = point;
@@ -138,15 +178,20 @@ public class MapWrapper {
     double max = Double.NEGATIVE_INFINITY;
     for (RouteMetrics.Segment segment : route.segments()) {
       Double value = metric(segment, mode);
-      if (value != null) { min = Math.min(min, value); max = Math.max(max, value); }
+      if (value != null) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
     }
     Polyline line = null;
     int previousColor = -1;
     RouteMetrics.Sample previousEnd = null;
     for (RouteMetrics.Segment segment : route.segments()) {
       Double value = metric(segment, mode);
-      int color = mode == 0 ? ROUTE_COLOR : value == null ? MISSING_COLOR
-          : RAMP[bucket(value, min, max, mode == 1)];
+      int color =
+          mode == 0
+              ? ROUTE_COLOR
+              : value == null ? MISSING_COLOR : RAMP[bucket(value, min, max, mode == 1)];
       if (line == null || color != previousColor || previousEnd != segment.start()) {
         line = new Polyline(mapView, true);
         line.setInfoWindow(null);
@@ -164,8 +209,10 @@ public class MapWrapper {
     if (route.last() != null && !route.last().equals(route.first()))
       overlays.add(marker(route.last(), "Finish"));
     mapView.getOverlays().addAll(overlays);
-    legend.setText(route.first() == null ? mapView.getContext().getString(R.string.route_no_gps)
-        : legendText(mode, min, max));
+    legend.setText(
+        route.first() == null
+            ? mapView.getContext().getString(R.string.route_no_gps)
+            : legendText(mode, min, max));
     mapView.invalidate();
   }
 
@@ -209,7 +256,12 @@ public class MapWrapper {
     if (mode == 0) return "Recorded route";
     if (!Double.isFinite(min)) return MODES[mode] + ": no recorded values";
     if (mode == 1) return "Fast " + pace(min) + " → Slow " + pace(max) + " min/km";
-    String unit = switch (mode) { case 2 -> " km/h"; case 3 -> " bpm"; default -> " m"; };
+    String unit =
+        switch (mode) {
+          case 2 -> " km/h";
+          case 3 -> " bpm";
+          default -> " m";
+        };
     return String.format(Locale.getDefault(), "%s: %.0f–%.0f%s", MODES[mode], min, max, unit);
   }
 
@@ -231,11 +283,23 @@ public class MapWrapper {
     return marker;
   }
 
-  public void onResume() { mapView.onResume(); }
+  public void onResume() {
+    mapView.onResume();
+  }
+
   public void onStart() {}
+
   public void onStop() {}
-  public void onPause() { mapView.onPause(); }
+
+  public void onPause() {
+    mapView.onPause();
+  }
+
   public void onSaveInstanceState(Bundle outState) {}
+
   public void onLowMemory() {}
-  public void onDestroy() { executor.shutdown(); }
+
+  public void onDestroy() {
+    executor.shutdown();
+  }
 }

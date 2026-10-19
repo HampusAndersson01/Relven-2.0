@@ -2,10 +2,10 @@ package org.runnerup.workout;
 
 import android.content.Context;
 import android.util.AtomicFile;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -17,6 +17,7 @@ import java.util.List;
 /** Stores validated plans atomically without changing active workouts or activity history. */
 public final class RelvenPlanStore {
   private static final int MAX_BYTES = 4_194_304;
+
   private RelvenPlanStore() {}
 
   public static void save(Context context, RelvenPlanImporter.Plan plan) throws IOException {
@@ -43,8 +44,10 @@ public final class RelvenPlanStore {
 
   /** Reads every saved plan and reports corrupt files instead of silently hiding them. */
   public static List<RelvenPlanImporter.Plan> list(Context context) throws IOException {
-    File[] files = context.getDir("relven-plans", Context.MODE_PRIVATE)
-        .listFiles((directory, name) -> name.endsWith(".json"));
+    File[] files =
+        context
+            .getDir("relven-plans", Context.MODE_PRIVATE)
+            .listFiles((directory, name) -> name.endsWith(".json"));
     if (files == null) throw new IOException("Unable to read saved plans");
     List<RelvenPlanImporter.Plan> plans = new ArrayList<>();
     for (File file : files) {
@@ -70,7 +73,8 @@ public final class RelvenPlanStore {
 
   private static String hashId(String id) {
     try {
-      byte[] digest = MessageDigest.getInstance("SHA-256").digest(id.getBytes(StandardCharsets.UTF_8));
+      byte[] digest =
+          MessageDigest.getInstance("SHA-256").digest(id.getBytes(StandardCharsets.UTF_8));
       StringBuilder result = new StringBuilder(digest.length * 2);
       for (byte value : digest) {
         result.append(Character.forDigit((value >> 4) & 0xF, 16));

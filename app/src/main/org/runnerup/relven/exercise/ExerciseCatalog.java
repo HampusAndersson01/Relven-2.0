@@ -41,8 +41,8 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
       boolean custom,
       boolean favorite) {}
 
-  public record FilterOptions(List<String> categories, List<String> equipment,
-      List<String> muscles) {}
+  public record FilterOptions(
+      List<String> categories, List<String> equipment, List<String> muscles) {}
 
   public ExerciseCatalog(Context context) {
     super(context, DB_NAME, null, DB_VERSION);
@@ -76,8 +76,9 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
 
   private void seed(SQLiteDatabase db) throws IOException, JSONException {
     StringBuilder json = new StringBuilder();
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-        context.getAssets().open(ASSET), StandardCharsets.UTF_8))) {
+    try (BufferedReader reader =
+        new BufferedReader(
+            new InputStreamReader(context.getAssets().open(ASSET), StandardCharsets.UTF_8))) {
       char[] buffer = new char[8192];
       int length;
       while ((length = reader.read(buffer)) != -1) json.append(buffer, 0, length);
@@ -120,16 +121,20 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
     return search(query, category, equipment, null, limit, favoritesOnly);
   }
 
-  public List<Exercise> search(String query, String category, String equipment, String muscle,
-      int limit, boolean favoritesOnly) {
+  public List<Exercise> search(
+      String query,
+      String category,
+      String equipment,
+      String muscle,
+      int limit,
+      boolean favoritesOnly) {
     if (limit < 1 || limit > 200) throw new IllegalArgumentException("Invalid search limit");
     StringBuilder where = new StringBuilder("1 = 1");
     List<String> args = new ArrayList<>();
     if (favoritesOnly) where.append(" AND favorite = 1");
     if (query != null && !query.isBlank()) {
       where.append(" AND name LIKE ? ESCAPE '\\'");
-      args.add("%" + query.replace("\\", "\\\\").replace("%", "\\%")
-          .replace("_", "\\_") + "%");
+      args.add("%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
     }
     if (category != null && !category.isBlank()) {
       where.append(" AND category = ?");
@@ -148,8 +153,17 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
       args.add(exactMuscle);
     }
     List<Exercise> result = new ArrayList<>();
-    try (Cursor cursor = getReadableDatabase().query("exercise", null, where.toString(),
-        args.toArray(new String[0]), null, null, "name COLLATE NOCASE", Integer.toString(limit))) {
+    try (Cursor cursor =
+        getReadableDatabase()
+            .query(
+                "exercise",
+                null,
+                where.toString(),
+                args.toArray(new String[0]),
+                null,
+                null,
+                "name COLLATE NOCASE",
+                Integer.toString(limit))) {
       while (cursor.moveToNext()) result.add(fromCursor(cursor));
     }
     return result;
@@ -159,9 +173,18 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
     Set<String> categories = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     Set<String> equipment = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     Set<String> muscles = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    try (Cursor cursor = getReadableDatabase().query("exercise",
-        new String[] {"category", "equipment", "primary_muscles_json", "secondary_muscles_json"},
-        null, null, null, null, null)) {
+    try (Cursor cursor =
+        getReadableDatabase()
+            .query(
+                "exercise",
+                new String[] {
+                  "category", "equipment", "primary_muscles_json", "secondary_muscles_json"
+                },
+                null,
+                null,
+                null,
+                null,
+                null)) {
       while (cursor.moveToNext()) {
         if (!cursor.isNull(0)) categories.add(cursor.getString(0));
         if (!cursor.isNull(1)) equipment.add(cursor.getString(1));
@@ -178,13 +201,13 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
         }
       }
     }
-    return new FilterOptions(List.copyOf(categories), List.copyOf(equipment),
-        List.copyOf(muscles));
+    return new FilterOptions(List.copyOf(categories), List.copyOf(equipment), List.copyOf(muscles));
   }
 
   public Exercise find(String id) {
-    try (Cursor cursor = getReadableDatabase().query("exercise", null, "id = ?",
-        new String[] {id}, null, null, null)) {
+    try (Cursor cursor =
+        getReadableDatabase()
+            .query("exercise", null, "id = ?", new String[] {id}, null, null, null)) {
       return cursor.moveToFirst() ? fromCursor(cursor) : null;
     }
   }
@@ -236,8 +259,15 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
     db.beginTransaction();
     try {
       int previousRevision;
-      try (Cursor cursor = db.query("exercise", new String[] {"revision"},
-          "id = ? AND custom = 1", new String[] {id}, null, null, null)) {
+      try (Cursor cursor =
+          db.query(
+              "exercise",
+              new String[] {"revision"},
+              "id = ? AND custom = 1",
+              new String[] {id},
+              null,
+              null,
+              null)) {
         if (!cursor.moveToFirst()) throw new IllegalArgumentException("Unknown custom exercise ID");
         previousRevision = cursor.getInt(0);
       }
@@ -268,9 +298,16 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
   }
 
   public String getRevisionSnapshot(String id, int revision) {
-    try (Cursor cursor = getReadableDatabase().query("exercise_revision",
-        new String[] {"snapshot_json"}, "exercise_id = ? AND revision = ?",
-        new String[] {id, Integer.toString(revision)}, null, null, null)) {
+    try (Cursor cursor =
+        getReadableDatabase()
+            .query(
+                "exercise_revision",
+                new String[] {"snapshot_json"},
+                "exercise_id = ? AND revision = ?",
+                new String[] {id, Integer.toString(revision)},
+                null,
+                null,
+                null)) {
       return cursor.moveToFirst() ? cursor.getString(0) : null;
     }
   }
@@ -289,8 +326,12 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
   }
 
   private static void validateCustom(String name, List<String> instructions) {
-    if (name == null || name.isBlank() || name.length() > 120 || instructions == null
-        || instructions.isEmpty() || instructions.size() > 30) {
+    if (name == null
+        || name.isBlank()
+        || name.length() > 120
+        || instructions == null
+        || instructions.isEmpty()
+        || instructions.size() > 30) {
       throw new IllegalArgumentException("Invalid custom exercise");
     }
     for (String instruction : instructions) {
@@ -302,10 +343,17 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
 
   private static Exercise fromCursor(Cursor cursor) {
     return new Exercise(
-        value(cursor, "id"), value(cursor, "source_id"), value(cursor, "name"),
-        value(cursor, "instructions_json"), value(cursor, "category"), value(cursor, "equipment"),
-        value(cursor, "primary_muscles_json"), value(cursor, "secondary_muscles_json"),
-        value(cursor, "movement_type"), value(cursor, "difficulty"), value(cursor, "source"),
+        value(cursor, "id"),
+        value(cursor, "source_id"),
+        value(cursor, "name"),
+        value(cursor, "instructions_json"),
+        value(cursor, "category"),
+        value(cursor, "equipment"),
+        value(cursor, "primary_muscles_json"),
+        value(cursor, "secondary_muscles_json"),
+        value(cursor, "movement_type"),
+        value(cursor, "difficulty"),
+        value(cursor, "source"),
         cursor.getInt(cursor.getColumnIndexOrThrow("revision")),
         cursor.getInt(cursor.getColumnIndexOrThrow("custom")) != 0,
         cursor.getInt(cursor.getColumnIndexOrThrow("favorite")) != 0);

@@ -53,20 +53,27 @@ public final class RouteMetrics {
         previous = sample;
         continue;
       }
-      Double altitude = validAltitude(previous.altitudeMeters()) && validAltitude(sample.altitudeMeters())
-          ? (previous.altitudeMeters() + sample.altitudeMeters()) / 2 : null;
-      Integer heartRate = sample.heartRate() != null && sample.heartRate() >= 30
-          && sample.heartRate() <= 240 ? sample.heartRate() : null;
-      segments.add(new Segment(previous, sample, distance, durationMs / distance,
-          speed * 3.6, heartRate, altitude));
+      Double altitude =
+          validAltitude(previous.altitudeMeters()) && validAltitude(sample.altitudeMeters())
+              ? (previous.altitudeMeters() + sample.altitudeMeters()) / 2
+              : null;
+      Integer heartRate =
+          sample.heartRate() != null && sample.heartRate() >= 30 && sample.heartRate() <= 240
+              ? sample.heartRate()
+              : null;
+      segments.add(
+          new Segment(
+              previous, sample, distance, durationMs / distance, speed * 3.6, heartRate, altitude));
       previous = sample;
     }
     return segments;
   }
 
   private static boolean validCoordinate(Sample sample) {
-    return Double.isFinite(sample.latitude()) && Double.isFinite(sample.longitude())
-        && Math.abs(sample.latitude()) <= 90 && Math.abs(sample.longitude()) <= 180;
+    return Double.isFinite(sample.latitude())
+        && Double.isFinite(sample.longitude())
+        && Math.abs(sample.latitude()) <= 90
+        && Math.abs(sample.longitude()) <= 180;
   }
 
   private static boolean validAltitude(Double altitude) {
@@ -76,9 +83,11 @@ public final class RouteMetrics {
   private static double distanceMeters(Sample a, Sample b) {
     double lat = Math.toRadians(b.latitude() - a.latitude());
     double lon = Math.toRadians(b.longitude() - a.longitude());
-    double h = Math.pow(Math.sin(lat / 2), 2)
-        + Math.cos(Math.toRadians(a.latitude())) * Math.cos(Math.toRadians(b.latitude()))
-        * Math.pow(Math.sin(lon / 2), 2);
+    double h =
+        Math.pow(Math.sin(lat / 2), 2)
+            + Math.cos(Math.toRadians(a.latitude()))
+                * Math.cos(Math.toRadians(b.latitude()))
+                * Math.pow(Math.sin(lon / 2), 2);
     return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(h)));
   }
 }
