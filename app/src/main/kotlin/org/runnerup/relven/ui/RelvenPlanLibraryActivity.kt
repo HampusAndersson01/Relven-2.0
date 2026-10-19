@@ -53,6 +53,7 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
   private var selectedMonth by mutableStateOf("")
   private var selectedDate by mutableStateOf("")
   private var showFormat by mutableStateOf(false)
+  private var pendingPlan by mutableStateOf<RelvenPlanImporter.Plan?>(null)
   private var busy by mutableStateOf(false)
   private var message by mutableStateOf<String?>(null)
 
@@ -74,6 +75,7 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
             selectedMonth = selectedMonth,
             selectedDate = selectedDate,
             showFormat = showFormat,
+            pendingPlan = pendingPlan,
             busy = busy,
             message = message,
             onBack = ::finish,
@@ -82,6 +84,8 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
               kitDestination.launch("relven-ai-plan-kit-v1.zip")
             },
             onFormat = { showFormat = !showFormat },
+            onConfirmImport = ::confirmImport,
+            onCancelImport = { pendingPlan = null; message = null },
             onSelect = { id ->
               selectedId = if (selectedId == id) null else id
               plans.firstOrNull { it.id() == selectedId }?.days()?.minOfOrNull { it.date() }
@@ -118,19 +122,37 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
     message = null
     lifecycleScope.launch {
       try {
-        val imported = withContext(Dispatchers.IO) {
+        val candidate = withContext(Dispatchers.IO) {
           val raw = readDocument(uri)
-          val plan = RelvenPlanImporter.parse(raw)
-          RelvenPlanStore.save(applicationContext, plan)
-          plan
+          RelvenPlanImporter.parse(raw)
         }
-        plans = withContext(Dispatchers.IO) { RelvenPlanStore.list(applicationContext) }
-        selectedId = imported.id()
-        selectedDate = imported.days().minOf { it.date() }
-        selectedMonth = selectedDate.substring(0, 7)
-        message = "Imported ${imported.name()} · ${imported.workoutDays()} workouts"
+        pendingPlan = candidate
+        message = "Review the plan before importing"
       } catch (error: Exception) {
+        pendingPlan = null
         message = "Plan was not imported: ${error.message ?: "invalid file"}"
+      } finally {
+        busy = false
+      }
+    }
+  }
+
+  private fun confirmImport() {
+    val candidate = pendingPlan ?: return
+    if (busy) return
+    busy = true
+    message = null
+    lifecycleScope.launch {
+      try {
+        withContext(Dispatchers.IO) { RelvenPlanStore.save(applicationContext, candidate) }
+        plans = withContext(Dispatchers.IO) { RelvenPlanStore.list(applicationContext) }
+        selectedId = candidate.id()
+        selectedDate = candidate.days().minOf { it.date() }
+        selectedMonth = selectedDate.substring(0, 7)
+        pendingPlan = null
+        message = "Imported ${candidate.name()} · ${candidate.workoutDays()} workouts"
+      } catch (error: Exception) {
+        message = "Plan was not imported: ${error.message ?: "save failed"}"
       } finally {
         busy = false
       }
@@ -182,12 +204,15 @@ private fun PlanLibrary(
     selectedMonth: String,
     selectedDate: String,
     showFormat: Boolean,
+    pendingPlan: RelvenPlanImporter.Plan?,
     busy: Boolean,
     message: String?,
     onBack: () -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
     onFormat: () -> Unit,
+    onConfirmImport: () -> Unit,
+    onCancelImport: () -> Unit,
     onSelect: (String) -> Unit,
     onMonthChange: (String) -> Unit,
     onDateChange: (String) -> Unit) {
@@ -223,6 +248,24 @@ private fun PlanLibrary(
       if (message != null) {
         Surface(color = RelvenColors.SurfaceRaised, modifier = Modifier.fillMaxWidth()) {
           Text(message, modifier = Modifier.padding(14.dp))
+        }
+      }
+      if (pendingPlan != null) {
+        Surface(color = RelvenColors.Surface, modifier = Modifier.fillMaxWidth()) {
+          Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Import preview", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(pendingPlan.name(), fontWeight = FontWeight.Bold)
+            Text("${pendingPlan.workoutDays()} running sessions · " +
+                "${pendingPlan.restDays()} rest days")
+            Text("${pendingPlan.days().minOf { it.date() }} – " +
+                pendingPlan.days().maxOf { it.date() })
+            Text("Timezone: ${pendingPlan.timezone()}", color = RelvenColors.MutedText)
+            Button(onClick = onConfirmImport, enabled = !busy,
+                colors = ButtonDefaults.buttonColors(containerColor = RelvenColors.Orange)) {
+              Text(if (busy) "Importing…" else "Import this plan")
+            }
+            OutlinedButton(onClick = onCancelImport, enabled = !busy) { Text("Cancel") }
+          }
         }
       }
       if (plans.isEmpty()) {
