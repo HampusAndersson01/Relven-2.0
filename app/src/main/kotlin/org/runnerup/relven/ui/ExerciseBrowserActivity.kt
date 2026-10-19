@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -21,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,6 +45,11 @@ class ExerciseBrowserActivity : ComponentActivity() {
   private var exercises by mutableStateOf<List<ExerciseCatalog.Exercise>>(emptyList())
   private var query by mutableStateOf("")
   private var favoritesOnly by mutableStateOf(false)
+  private var category by mutableStateOf<String?>(null)
+  private var equipment by mutableStateOf<String?>(null)
+  private var muscle by mutableStateOf<String?>(null)
+  private var filters by mutableStateOf(
+      ExerciseCatalog.FilterOptions(emptyList(), emptyList(), emptyList()))
   private var selected by mutableStateOf<ExerciseCatalog.Exercise?>(null)
   private var editing by mutableStateOf(false)
   private var editorId by mutableStateOf<String?>(null)
@@ -57,6 +67,10 @@ class ExerciseBrowserActivity : ComponentActivity() {
             exercises = exercises,
             query = query,
             favoritesOnly = favoritesOnly,
+            category = category,
+            equipment = equipment,
+            muscle = muscle,
+            filters = filters,
             selected = selected,
             editing = editing,
             customName = customName,
@@ -70,6 +84,9 @@ class ExerciseBrowserActivity : ComponentActivity() {
             },
             onQuery = { query = it; search() },
             onFavorites = { favoritesOnly = !favoritesOnly; search() },
+            onCategory = { category = it; search() },
+            onEquipment = { equipment = it; search() },
+            onMuscle = { muscle = it; search() },
             onSelect = { selected = it },
             onFavorite = { exercise -> toggleFavorite(exercise) },
             onNew = { beginEdit(null) },
@@ -83,7 +100,17 @@ class ExerciseBrowserActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
-    search()
+    lifecycleScope.launch {
+      try {
+        filters = withContext(Dispatchers.IO) {
+          val catalog = ExerciseCatalog(applicationContext)
+          try { catalog.filterOptions() } finally { catalog.close() }
+        }
+        search()
+      } catch (error: Exception) {
+        message = "Exercise filters could not be loaded: ${error.message}"
+      }
+    }
   }
 
   private fun search() {
@@ -94,7 +121,7 @@ class ExerciseBrowserActivity : ComponentActivity() {
       try {
         val result = withContext(Dispatchers.IO) {
           val catalog = ExerciseCatalog(applicationContext)
-          try { catalog.search(query, null, null, 200, favoritesOnly) }
+          try { catalog.search(query, category, equipment, muscle, 200, favoritesOnly) }
           finally { catalog.close() }
         }
         exercises = result
@@ -178,6 +205,10 @@ private fun ExerciseBrowser(
     exercises: List<ExerciseCatalog.Exercise>,
     query: String,
     favoritesOnly: Boolean,
+    category: String?,
+    equipment: String?,
+    muscle: String?,
+    filters: ExerciseCatalog.FilterOptions,
     selected: ExerciseCatalog.Exercise?,
     editing: Boolean,
     customName: String,
@@ -187,6 +218,9 @@ private fun ExerciseBrowser(
     onBack: () -> Unit,
     onQuery: (String) -> Unit,
     onFavorites: () -> Unit,
+    onCategory: (String?) -> Unit,
+    onEquipment: (String?) -> Unit,
+    onMuscle: (String?) -> Unit,
     onSelect: (ExerciseCatalog.Exercise) -> Unit,
     onFavorite: (ExerciseCatalog.Exercise) -> Unit,
     onNew: () -> Unit,
@@ -218,6 +252,12 @@ private fun ExerciseBrowser(
         OutlinedTextField(value = query, onValueChange = onQuery,
             label = { Text("Search exercises") }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          ExerciseFilter("Category", category, filters.categories(), onCategory)
+          ExerciseFilter("Equipment", equipment, filters.equipment(), onEquipment)
+          ExerciseFilter("Muscle", muscle, filters.muscles(), onMuscle)
+        }
         OutlinedButton(onClick = onFavorites) {
           Text(if (favoritesOnly) "Show all" else "Favorites only")
         }
@@ -225,7 +265,8 @@ private fun ExerciseBrowser(
         if (!loading && exercises.isEmpty()) {
           Text("No exercises found", color = RelvenColors.MutedText)
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
           items(exercises, key = { it.id() }) { exercise ->
             OutlinedButton(onClick = { onSelect(exercise) }, modifier = Modifier.fillMaxWidth()) {
               Column(Modifier.fillMaxWidth()) {
@@ -249,7 +290,8 @@ private fun ExerciseBrowser(
           OutlinedButton(onClick = { onEdit(selected) }) { Text("Edit exercise") }
         }
         val instructions = JSONArray(selected.instructionsJson())
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
           items(instructions.length()) { index ->
             Surface(color = RelvenColors.Surface,
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
@@ -260,6 +302,26 @@ private fun ExerciseBrowser(
           }
           item { Text("Source: ${selected.source()}", color = RelvenColors.MutedText) }
         }
+      }
+    }
+  }
+}
+
+@Composable
+private fun ExerciseFilter(
+    label: String,
+    selected: String?,
+    options: List<String>,
+    onSelect: (String?) -> Unit) {
+  var open by remember { mutableStateOf(false) }
+  Column {
+    OutlinedButton(onClick = { open = true }) { Text(selected ?: label) }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+      DropdownMenuItem(text = { Text("All $label") },
+          onClick = { onSelect(null); open = false })
+      for (option in options) {
+        DropdownMenuItem(text = { Text(option) },
+            onClick = { onSelect(option); open = false })
       }
     }
   }

@@ -11,6 +11,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -38,6 +40,9 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
       int revision,
       boolean custom,
       boolean favorite) {}
+
+  public record FilterOptions(List<String> categories, List<String> equipment,
+      List<String> muscles) {}
 
   public ExerciseCatalog(Context context) {
     super(context, DB_NAME, null, DB_VERSION);
@@ -112,6 +117,11 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
 
   public List<Exercise> search(
       String query, String category, String equipment, int limit, boolean favoritesOnly) {
+    return search(query, category, equipment, null, limit, favoritesOnly);
+  }
+
+  public List<Exercise> search(String query, String category, String equipment, String muscle,
+      int limit, boolean favoritesOnly) {
     if (limit < 1 || limit > 200) throw new IllegalArgumentException("Invalid search limit");
     StringBuilder where = new StringBuilder("1 = 1");
     List<String> args = new ArrayList<>();
@@ -129,12 +139,47 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
       where.append(" AND equipment = ?");
       args.add(equipment);
     }
+    if (muscle != null && !muscle.isBlank()) {
+      where.append(" AND (instr(primary_muscles_json, ?) > 0");
+      where.append(" OR instr(secondary_muscles_json, ?) > 0)");
+      String exactMuscle = new JSONArray().put(muscle).toString();
+      exactMuscle = exactMuscle.substring(1, exactMuscle.length() - 1);
+      args.add(exactMuscle);
+      args.add(exactMuscle);
+    }
     List<Exercise> result = new ArrayList<>();
     try (Cursor cursor = getReadableDatabase().query("exercise", null, where.toString(),
         args.toArray(new String[0]), null, null, "name COLLATE NOCASE", Integer.toString(limit))) {
       while (cursor.moveToNext()) result.add(fromCursor(cursor));
     }
     return result;
+  }
+
+  public FilterOptions filterOptions() {
+    Set<String> categories = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    Set<String> equipment = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    Set<String> muscles = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    try (Cursor cursor = getReadableDatabase().query("exercise",
+        new String[] {"category", "equipment", "primary_muscles_json", "secondary_muscles_json"},
+        null, null, null, null, null)) {
+      while (cursor.moveToNext()) {
+        if (!cursor.isNull(0)) categories.add(cursor.getString(0));
+        if (!cursor.isNull(1)) equipment.add(cursor.getString(1));
+        for (int column = 2; column <= 3; column++) {
+          try {
+            JSONArray values = new JSONArray(cursor.getString(column));
+            for (int i = 0; i < values.length(); i++) {
+              String value = values.optString(i);
+              if (!value.isBlank()) muscles.add(value);
+            }
+          } catch (JSONException error) {
+            throw new IllegalStateException("Corrupt exercise muscle data", error);
+          }
+        }
+      }
+    }
+    return new FilterOptions(List.copyOf(categories), List.copyOf(equipment),
+        List.copyOf(muscles));
   }
 
   public Exercise find(String id) {
