@@ -181,13 +181,63 @@
 
             <LinearLayout
                 android:id="@+id/tab_map"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content">
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <Spinner
+                    android:id="@+id/route_metric_selector"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:contentDescription="@string/route_color_metric" />
+
+                <TextView
+                    android:id="@+id/route_metric_legend"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="6dp"
+                    android:text="@string/route_recorded"
+                    android:textColor="@android:color/white" />
+
+                <LinearLayout
+                    style="?android:attr/buttonBarStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:id="@+id/route_recenter"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/route_recenter" />
+
+                    <Button
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:id="@+id/route_fit"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/route_fit" />
+                </LinearLayout>
 
                 <org.runnerup.util.MapViewWrapper
                     android:id="@+id/mapview"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="4dp"
+                    android:text="@string/route_map_privacy"
+                    android:textColor="@android:color/white" />
             </LinearLayout>
 
             <LinearLayout

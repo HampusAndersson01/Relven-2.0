@@ -15,7 +15,7 @@ Status describes this checkout, not planned designs.
 | Calendar and strength details | Pending | Stitch correction and implementation |
 | Offline exercise catalog and gym logging | 871-record offline catalog and SQLite foundation; gym logging pending | Source/license pinned; browser, exercise editing and device test pending |
 | AI Plan Kit ZIP | Pending | Generate from implemented schema only |
-| Free map and route coloring | osmdroid map inherited; coloring pending | Runtime route-sample audit |
+| Free map and route coloring | osmdroid map now colors valid route segments by pace, speed, heart rate or elevation, with a numeric legend | Visual, long-route and recorded-data tests pending; tile-cache policy still to audit |
 | New Compose phone/watch UI | Phone foundation/preview only | Debug-only native screen rendered on a phone; production navigation and Wear UI pending |
 
 Build success does not prove device behavior. No phone or watch device was connected during the baseline build.

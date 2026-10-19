@@ -140,6 +140,8 @@ public class DetailActivity extends AppCompatActivity implements Constants {
           });
 
   private MapWrapper mapWrapper = null;
+  private boolean mapInitialized = false;
+  private Bundle mapSavedInstanceState;
   private GraphWrapper graphWrapper;
   private long mStartTime = 0; // activity start time in unix timestamp
   private ContentValues headerData = new ContentValues();
@@ -153,6 +155,7 @@ public class DetailActivity extends AppCompatActivity implements Constants {
     WindowCompat.getInsetsController(window, window.getDecorView())
         .setAppearanceLightStatusBars(false);
     super.onCreate(savedInstanceState);
+    mapSavedInstanceState = savedInstanceState;
     if (BuildConfig.OSMDROID_ENABLED || BuildConfig.MAPBOX_ENABLED) {
       // MapBox or Osmdroid, set mapWrapper.
       MapWrapper.start(this);
@@ -233,7 +236,6 @@ public class DetailActivity extends AppCompatActivity implements Constants {
     if (BuildConfig.OSMDROID_ENABLED || BuildConfig.MAPBOX_ENABLED) {
       Object mapView = findViewById(R.id.mapview);
       mapWrapper = new MapWrapper(this, mDB, mID, formatter, mapView);
-      mapWrapper.onCreate(savedInstanceState);
     }
 
     saveButton.setOnClickListener(saveButtonClick);
@@ -401,6 +403,12 @@ public class DetailActivity extends AppCompatActivity implements Constants {
   private void showDetailTab(int selectedPosition) {
     for (int i = 0; i < tabContents.size(); i++) {
       tabContents.get(i).setVisibility(i == selectedPosition ? View.VISIBLE : View.GONE);
+    }
+    if (mapWrapper != null && !mapInitialized
+        && tabContents.get(selectedPosition).getId() == R.id.tab_map) {
+      mapWrapper.onCreate(mapSavedInstanceState);
+      mapInitialized = true;
+      mapSavedInstanceState = null;
     }
   }
 

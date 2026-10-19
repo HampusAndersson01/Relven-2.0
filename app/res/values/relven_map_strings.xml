@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="route_color_metric">Route color metric</string>
+    <string name="route_recorded">Recorded route</string>
+    <string name="route_recenter">Recenter</string>
+    <string name="route_fit">Fit route</string>
+    <string name="route_no_gps">No GPS route recorded</string>
+    <string name="route_map_privacy">Map tiles load online and reveal the area shown. © OpenStreetMap contributors</string>
+</resources>
