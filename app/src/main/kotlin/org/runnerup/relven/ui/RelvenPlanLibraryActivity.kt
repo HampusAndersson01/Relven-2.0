@@ -58,6 +58,10 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
   private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
     if (uri != null) importPlan(uri)
   }
+  private val kitDestination =
+      registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) exportKit(uri)
+      }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -72,6 +76,9 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
             message = message,
             onBack = ::finish,
             onImport = { picker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+            onExport = {
+              kitDestination.launch("relven-ai-plan-kit-v1.zip")
+            },
             onSelect = { id ->
               selectedId = if (selectedId == id) null else id
               plans.firstOrNull { it.id() == selectedId }?.days()?.minOfOrNull { it.date() }
@@ -141,6 +148,28 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
       return output.toString(Charsets.UTF_8.name())
     }
   }
+
+  private fun exportKit(uri: Uri) {
+    if (busy) return
+    busy = true
+    message = null
+    lifecycleScope.launch {
+      try {
+        withContext(Dispatchers.IO) {
+          val output = contentResolver.openOutputStream(uri)
+              ?: throw IOException("Unable to create file")
+          assets.open("relven/relven-ai-plan-kit-v1.zip").use { input ->
+            output.use { input.copyTo(it) }
+          }
+        }
+        message = "AI Plan Kit exported"
+      } catch (error: Exception) {
+        message = "AI Plan Kit could not be exported: ${error.message}"
+      } finally {
+        busy = false
+      }
+    }
+  }
 }
 
 @Composable
@@ -153,6 +182,7 @@ private fun PlanLibrary(
     message: String?,
     onBack: () -> Unit,
     onImport: () -> Unit,
+    onExport: () -> Unit,
     onSelect: (String) -> Unit,
     onMonthChange: (String) -> Unit,
     onDateChange: (String) -> Unit) {
@@ -168,6 +198,7 @@ private fun PlanLibrary(
       }
       Text("Training plans", fontSize = 28.sp, fontWeight = FontWeight.Bold)
       Text("Saved on this device", color = RelvenColors.MutedText)
+      OutlinedButton(onClick = onExport, enabled = !busy) { Text("Export AI Plan Kit") }
       if (message != null) {
         Surface(color = RelvenColors.SurfaceRaised, modifier = Modifier.fillMaxWidth()) {
           Text(message, modifier = Modifier.padding(14.dp))

@@ -1,0 +1,1 @@
+Revise the attached Relven plan JSON using AI Plan Kit v1. Ask which dates or workouts I want changed. Keep the plan ID, unchanged workout IDs and unrelated scheduled days intact. Use unique IDs for new workouts and sessions. Return the complete revised JSON object only, following INSTRUCTIONS.md and the included schemas. Do not claim any session was completed.

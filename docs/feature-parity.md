@@ -14,7 +14,7 @@ Status describes this checkout, not planned designs.
 | Versioned JSON workouts and plans | Partial running-workout v3 import; v1 running-plan picker, validation and private storage | Supported workouts convert into inherited files; plan activation, strength and device execution pending |
 | Calendar and strength details | Basic month view for imported running/rest entries; strength pending | Device UI test, scheduling actions and Stitch correction pending |
 | Offline exercise catalog and gym logging | 871-record offline catalog with search, instruction detail, favorites and custom exercise editing; gym logging pending | Source/license pinned; device test pending |
-| AI Plan Kit ZIP | Pending | Generate from implemented schema only |
+| AI Plan Kit ZIP | Versioned running-only ZIP generated from current schemas and exportable from plan screen | User-selected export and AI-generated JSON import need device test; strength is intentionally excluded |
 | Free map and route coloring | osmdroid map now colors valid route segments by pace, speed, heart rate or elevation, with a numeric legend | Visual, long-route and recorded-data tests pending; tile-cache policy still to audit |
 | New Compose phone/watch UI | Phone foundation/preview only | Debug-only native screen rendered on a phone; production navigation and Wear UI pending |
 

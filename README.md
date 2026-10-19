@@ -11,7 +11,7 @@ Relven is a free, open-source fitness app for Android with a phone-dependent Wea
 - Use the Wear OS companion for live workout display and remote actions. The phone owns the workout and GPS recording.
 - Import or share the workout formats currently supported by RunnerUp.
 
-An initial Wear heart-rate provider is integrated behind an experimental setting, but it has not been tested on a watch and screen-off/background capture is unsupported. A limited Relven v3 running-workout JSON importer is implemented but has not been tested through the device UI. FIT Workout and multiweek plan imports, strength tracking, a unified calendar, AI Plan Kit and route coloring are **not yet implemented**. A debug-only Compose screen previews the new visual foundation; the launcher and workout screens still use the inherited layout beneath Relven branding.
+An initial Wear heart-rate provider is integrated behind an experimental setting, but it has not been tested on a watch and screen-off/background capture is unsupported. A limited Relven v3 running-workout JSON importer, v1 offline running-plan importer with a month view, offline exercise browser, running-only AI Plan Kit export, and activity-map metric coloring are implemented in code. These new flows have not been verified on a device. FIT Workout import, strength tracking, plan activation and the complete new phone/watch UI remain pending. A debug-only Compose screen previews the new visual foundation; the launcher and workout screens still use the inherited layout beneath Relven branding.
 
 ## Build and install
 
@@ -28,7 +28,7 @@ Phone and watch share the original Relven Play application ID `se.hampusandersso
 
 ## Workouts, plans and exports
 
-Use **Import workout** in the workout management screen to select an inherited RunnerUp-format workout or the executable subset of Relven v3 **running-workout** JSON. The latter supports simple time, distance or manual steps, sequences, repeats, and numeric pace, speed or heart-rate targets. Unsupported conditions and strength workouts return an import error. Relven multiweek plans and FIT Workout files cannot yet be imported. Use activity details and export controls for available recording formats; installed options depend on the build variant and configured integrations. See [feature parity](docs/feature-parity.md).
+Use **Import workout** in the workout management screen to select an inherited RunnerUp-format workout or the executable subset of Relven v3 **running-workout** JSON. The latter supports simple time, distance or manual steps, sequences, repeats, and numeric pace, speed or heart-rate targets. **Training plans** imports versioned `relven.plan` v1 running/rest JSON and displays its scheduled dates; the same screen exports a running-only [AI Plan Kit](docs/ai-plan-kit/README.md) ZIP to a file you choose. Imported plans do not yet activate RunnerUp workouts. The **Exercise library** browses bundled offline metadata and supports local favorites and custom entries. FIT Workout files and strength plans remain unsupported. Use activity details and export controls for available recording formats; installed options depend on the build variant and configured integrations. See [feature parity](docs/feature-parity.md).
 
 ## Privacy and offline use
 
