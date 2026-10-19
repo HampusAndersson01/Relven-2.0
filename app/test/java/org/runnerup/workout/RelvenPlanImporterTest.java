@@ -16,6 +16,7 @@ public class RelvenPlanImporterTest {
     assertEquals("First weeks", plan.name());
     assertEquals(2, plan.workoutDays());
     assertEquals(1, plan.restDays());
+    assertEquals("Easy run", plan.workoutNames().get("run-a"));
   }
 
   @Test

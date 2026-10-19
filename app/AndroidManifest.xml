@@ -204,6 +204,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="org.runnerup.relven.ui.RelvenPlanLibraryActivity"
+            android:exported="false"
+            android:label="@string/relven_training_plans"
+            android:parentActivityName=".view.ManageWorkoutsActivity" />
+
         <provider
             android:name=".content.WorkoutFileProvider"
             android:authorities="${applicationId}.workout.file.provider"

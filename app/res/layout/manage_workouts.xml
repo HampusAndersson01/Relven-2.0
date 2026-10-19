@@ -54,6 +54,20 @@
             android:layout_height="wrap_content">
 
             <Button
+                android:id="@+id/open_plan_library_button"
+                style="@style/ButtonText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/btn_blue"
+                android:text="@string/relven_training_plans"
+                android:textSize="16sp" />
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <Button
                 android:id="@+id/share_workout_button"
                 style="@style/ButtonText"
                 android:layout_width="0dp"

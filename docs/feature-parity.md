@@ -11,8 +11,8 @@ Status describes this checkout, not planned designs.
 | Wear workout display and controls | Inherited, runtime unverified | Paired-device test pending |
 | Watch heart-rate measurement | Initial integration, unverified | [PR #1378 audit](wear-hr-audit.md); Galaxy Watch6 Classic, screen-off and permission tests pending |
 | FIT Workout import | Pending | Decode FIT file type 5 with tests |
-| Versioned JSON workouts and plans | Partial running-workout v3 import; plan validation/storage foundation | Supported steps convert into inherited workout files; plan picker/calendar, strength and device execution pending |
-| Calendar and strength details | Pending | Stitch correction and implementation |
+| Versioned JSON workouts and plans | Partial running-workout v3 import; v1 running-plan picker, validation and private storage | Supported workouts convert into inherited files; plan activation, strength and device execution pending |
+| Calendar and strength details | Basic month view for imported running/rest entries; strength pending | Device UI test, scheduling actions and Stitch correction pending |
 | Offline exercise catalog and gym logging | 871-record offline catalog and SQLite foundation; gym logging pending | Source/license pinned; browser, exercise editing and device test pending |
 | AI Plan Kit ZIP | Pending | Generate from implemented schema only |
 | Free map and route coloring | osmdroid map now colors valid route segments by pace, speed, heart rate or elevation, with a numeric legend | Visual, long-route and recorded-data tests pending; tile-cache policy still to audit |

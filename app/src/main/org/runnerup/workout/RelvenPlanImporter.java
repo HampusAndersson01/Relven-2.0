@@ -27,6 +27,7 @@ public final class RelvenPlanImporter {
       String timezone,
       List<Session> days,
       Map<String, Workout> workouts,
+      Map<String, String> workoutNames,
       String sourceJson) {
     public long workoutDays() {
       return days.stream().filter(day -> day.kind().equals("workout")).count();
@@ -60,11 +61,13 @@ public final class RelvenPlanImporter {
         throw invalid("workout count");
       }
       Map<String, Workout> workouts = new HashMap<>();
+      Map<String, String> workoutNames = new HashMap<>();
       for (int i = 0; i < workoutArray.length(); i++) {
         JSONObject document = workoutArray.getJSONObject(i);
         String workoutId = text(document, "id");
         if (workouts.containsKey(workoutId)) throw invalid("duplicate workout id");
         workouts.put(workoutId, RelvenWorkoutImporter.parse(document.toString()));
+        workoutNames.put(workoutId, text(document, "name"));
       }
 
       JSONArray dayArray = root.getJSONArray("days");
@@ -109,7 +112,8 @@ public final class RelvenPlanImporter {
       if (!Collections.disjoint(restDates, workoutDates)) {
         throw invalid("rest and workout on the same date");
       }
-      return new Plan(id, name, timezone, List.copyOf(days), Map.copyOf(workouts), json);
+      return new Plan(id, name, timezone, List.copyOf(days), Map.copyOf(workouts),
+          Map.copyOf(workoutNames), json);
     } catch (JSONException error) {
       throw new IllegalArgumentException("Invalid Relven plan JSON", error);
     }

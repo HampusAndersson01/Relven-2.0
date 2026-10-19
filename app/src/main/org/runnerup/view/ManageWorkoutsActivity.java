@@ -76,6 +76,7 @@ import org.runnerup.util.ViewUtil;
 import org.runnerup.workout.Workout;
 import org.runnerup.workout.RelvenWorkoutImporter;
 import org.runnerup.workout.WorkoutSerializer;
+import org.runnerup.relven.ui.RelvenPlanLibraryActivity;
 import org.json.JSONObject;
 
 public class ManageWorkoutsActivity extends AppCompatActivity implements Constants {
@@ -144,6 +145,8 @@ public class ManageWorkoutsActivity extends AppCompatActivity implements Constan
     createButton.setOnClickListener(createButtonClick);
     importButton = findViewById(R.id.import_workout_button);
     importButton.setOnClickListener(view -> importLauncher.launch(new String[] {"*/*"}));
+    findViewById(R.id.open_plan_library_button).setOnClickListener(
+        view -> startActivity(new Intent(this, RelvenPlanLibraryActivity.class)));
 
     shareButton = findViewById(R.id.share_workout_button);
     shareButton.setOnClickListener(shareButtonClick);
