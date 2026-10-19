@@ -13,7 +13,7 @@ Status describes this checkout, not planned designs.
 | FIT Workout import | Pending | Decode FIT file type 5 with tests |
 | Versioned JSON workouts and plans | Partial running-workout v3 import; v1 running-plan picker, validation and private storage | Supported workouts convert into inherited files; plan activation, strength and device execution pending |
 | Calendar and strength details | Basic month view for imported running/rest entries; strength pending | Device UI test, scheduling actions and Stitch correction pending |
-| Offline exercise catalog and gym logging | 871-record offline catalog and SQLite foundation; gym logging pending | Source/license pinned; browser, exercise editing and device test pending |
+| Offline exercise catalog and gym logging | 871-record offline catalog with search, instruction detail, favorites and custom exercise editing; gym logging pending | Source/license pinned; device test pending |
 | AI Plan Kit ZIP | Pending | Generate from implemented schema only |
 | Free map and route coloring | osmdroid map now colors valid route segments by pace, speed, heart rate or elevation, with a numeric legend | Visual, long-route and recorded-data tests pending; tile-cache policy still to audit |
 | New Compose phone/watch UI | Phone foundation/preview only | Debug-only native screen rendered on a phone; production navigation and Wear UI pending |

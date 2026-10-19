@@ -107,9 +107,15 @@ public final class ExerciseCatalog extends SQLiteOpenHelper {
   }
 
   public List<Exercise> search(String query, String category, String equipment, int limit) {
+    return search(query, category, equipment, limit, false);
+  }
+
+  public List<Exercise> search(
+      String query, String category, String equipment, int limit, boolean favoritesOnly) {
     if (limit < 1 || limit > 200) throw new IllegalArgumentException("Invalid search limit");
     StringBuilder where = new StringBuilder("1 = 1");
     List<String> args = new ArrayList<>();
+    if (favoritesOnly) where.append(" AND favorite = 1");
     if (query != null && !query.isBlank()) {
       where.append(" AND name LIKE ? ESCAPE '\\'");
       args.add("%" + query.replace("\\", "\\\\").replace("%", "\\%")

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="relven_training_plans">Training plans</string>
+    <string name="relven_exercises">Exercise library</string>
 </resources>
