@@ -1,0 +1,7 @@
+# Offline exercise catalog (foundation)
+
+The bundled metadata comes from [yuhonas/free-exercise-db](https://github.com/yuhonas/free-exercise-db) at commit `f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5`, under the [Unlicense](third-party/free-exercise-db-LICENSE.md). The [refresh script](../tools/refresh_exercise_catalog.py) creates deterministic UUIDs from source IDs, strips all image paths, and includes only records with a name and instructions. The current [asset](../app/assets/relven/exercises-v1.json) has 871 entries. The [schema](../schemas/exercise-v1.schema.json) validates every entry and uniqueness of IDs was checked.
+
+`ExerciseCatalog` seeds a dedicated local SQLite database on first open. It has stable source mappings, a searchable exercise table, an immutable revision snapshot table, custom exercise creation/editing and favorites. Earlier custom revisions remain available for existing plan references. The database is independent from RunnerUp activity history. Existing user records will not be overwritten by a future seed refresh; schema upgrades require explicit migrations.
+
+This is a storage foundation. The exercise browser, custom exercise editor UI, collection import/export, muscle filtering, media and strength workout UI are still pending. No external exercise API is required at runtime. The original Relven workout schema expects UUID exercise references and pinned revisions, which this catalog can provide once plan resolution is wired.

@@ -50,4 +50,4 @@
 
 ## Later phases
 
-The [offline running plan format](plan-format.md) now has a checked JSON Schema, example, semantic parser and atomic private storage helper. Plan file-picker wiring, calendar, AI Plan Kit, strength library and map coloring remain pending. See [roadmap](roadmap.md) and [feature parity](feature-parity.md). Do not use the owner's phone via ADB again until all phases are complete and the app is ready for manual testing.
+The [offline running plan format](plan-format.md) now has a checked JSON Schema, example, semantic parser and atomic private storage helper. The [exercise catalog foundation](exercise-catalog.md) contains 871 licensed offline metadata records and a dedicated SQLite store, but its UI and strength-plan resolution remain pending. Plan file-picker wiring, calendar, AI Plan Kit and map coloring remain pending. See [roadmap](roadmap.md) and [feature parity](feature-parity.md). Do not use the owner's phone via ADB again until all phases are complete and the app is ready for manual testing.
