@@ -4,7 +4,7 @@
 
 - The 12 stacked draft PRs remain unmerged. Their earlier CI runs failed at the inherited all-Java Spotless gate after build, test and lint steps.
 - PR #12 now ratchets Spotless from the pinned RunnerUp import and formats the Relven-changed Java files. Local phone/watch debug builds, app/Wear/HR unit targets and `spotlessCheck` pass. Its new GitHub CI run is pending.
-- FIT Workout import research resumed against Garmin's current protocol and Workout file documentation. No binary decoder or real FIT fixture is merged yet; the GPL compatibility concern for Garmin's Java SDK still applies.
+- A FIT Workout subset decoder is now on `codex/fit-workout`: the workout picker converts supported running steps and rejects Activity files or unsupported semantics. A deterministic valid FIT binary fixture passes unit and native-serialization tests and was independently decoded with a BSD-licensed Go library. Phone/watch debug builds, app/Wear/HR unit tests and lint pass locally. It has not been run through the picker or on a device; Garmin SDK licensing still rules out linking that SDK.
 - The owner's physical Android device remains off limits for ADB until all phases are complete and ready for manual testing.
 
 ## Phase Zero — repository migration
@@ -53,7 +53,7 @@
 
 - **In progress:** The workout library now has a system file-picker button. Relven v3 running-workout JSON enters through this picker or the inherited document intent. Time, distance and manual ends, pace, speed and heart-rate targets, sequences and repeats convert to the RunnerUp engine and are saved in its existing workout file format. The parser rejects unsupported composite/heart-rate-below ends, effort targets, strength documents and exercise snapshots rather than changing their meaning.
 - **Verification:** Focused importer unit tests, phone debug build and lint passed. The generated file structure is tested; import through UI and execution on a device have not been verified.
-- **Pending:** FIT Workout decoding, richer schema validation, a full saved-file execution test, import UX review and activity export round trip. [FIT research](fit-import-research.md) records the official SDK license constraint.
+- **Pending:** Broader real-world FIT Workout compatibility, richer schema validation, a full saved-file execution test, import UX review and activity export round trip. [FIT research](fit-import-research.md) records the supported subset and official SDK license constraint.
 
 ## Later phases
 
