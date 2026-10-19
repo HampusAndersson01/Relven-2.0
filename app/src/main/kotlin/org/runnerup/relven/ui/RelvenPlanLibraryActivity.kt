@@ -52,6 +52,7 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
   private var selectedId by mutableStateOf<String?>(null)
   private var selectedMonth by mutableStateOf("")
   private var selectedDate by mutableStateOf("")
+  private var showFormat by mutableStateOf(false)
   private var busy by mutableStateOf(false)
   private var message by mutableStateOf<String?>(null)
 
@@ -72,6 +73,7 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
             selectedId = selectedId,
             selectedMonth = selectedMonth,
             selectedDate = selectedDate,
+            showFormat = showFormat,
             busy = busy,
             message = message,
             onBack = ::finish,
@@ -79,6 +81,7 @@ class RelvenPlanLibraryActivity : ComponentActivity() {
             onExport = {
               kitDestination.launch("relven-ai-plan-kit-v1.zip")
             },
+            onFormat = { showFormat = !showFormat },
             onSelect = { id ->
               selectedId = if (selectedId == id) null else id
               plans.firstOrNull { it.id() == selectedId }?.days()?.minOfOrNull { it.date() }
@@ -178,11 +181,13 @@ private fun PlanLibrary(
     selectedId: String?,
     selectedMonth: String,
     selectedDate: String,
+    showFormat: Boolean,
     busy: Boolean,
     message: String?,
     onBack: () -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
+    onFormat: () -> Unit,
     onSelect: (String) -> Unit,
     onMonthChange: (String) -> Unit,
     onDateChange: (String) -> Unit) {
@@ -198,7 +203,23 @@ private fun PlanLibrary(
       }
       Text("Training plans", fontSize = 28.sp, fontWeight = FontWeight.Bold)
       Text("Saved on this device", color = RelvenColors.MutedText)
-      OutlinedButton(onClick = onExport, enabled = !busy) { Text("Export AI Plan Kit") }
+      Text("AI plans", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+      Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onExport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+          Text("Export instructions")
+        }
+        OutlinedButton(onClick = onFormat, modifier = Modifier.fillMaxWidth()) {
+          Text("Format support")
+        }
+      }
+      if (showFormat) {
+        Surface(color = RelvenColors.SurfaceRaised, modifier = Modifier.fillMaxWidth()) {
+          Text("Imports local Relven plan v1 JSON with running workouts and rest days. " +
+              "Time, distance and manual steps are supported. Strength plans, FIT workouts " +
+              "and plan ZIP files are not supported yet.",
+              modifier = Modifier.padding(14.dp))
+        }
+      }
       if (message != null) {
         Surface(color = RelvenColors.SurfaceRaised, modifier = Modifier.fillMaxWidth()) {
           Text(message, modifier = Modifier.padding(14.dp))
@@ -208,7 +229,8 @@ private fun PlanLibrary(
         Text("No plans yet. Import a Relven plan JSON file to see its scheduled sessions.",
             color = RelvenColors.MutedText)
       } else {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
           items(plans, key = { it.id() }) { plan ->
             OutlinedButton(onClick = { onSelect(plan.id()) }, modifier = Modifier.fillMaxWidth()) {
               Column(Modifier.fillMaxWidth()) {
