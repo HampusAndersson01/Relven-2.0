@@ -1,5 +1,12 @@
 # Implementation status — 19 October 2026
 
+## 20 October 2026 checkpoint
+
+- The 12 stacked draft PRs remain unmerged. Their earlier CI runs failed at the inherited all-Java Spotless gate after build, test and lint steps.
+- PR #12 now ratchets Spotless from the pinned RunnerUp import and formats the Relven-changed Java files. Local phone/watch debug builds, app/Wear/HR unit targets and `spotlessCheck` pass. Its new GitHub CI run is pending.
+- FIT Workout import research resumed against Garmin's current protocol and Workout file documentation. No binary decoder or real FIT fixture is merged yet; the GPL compatibility concern for Garmin's Java SDK still applies.
+- The owner's physical Android device remains off limits for ADB until all phases are complete and ready for manual testing.
+
 ## Phase Zero — repository migration
 
 - **Completed:** Existing history-preserving GitHub fork checked out on `codex/phase-zero`; `upstream` remote added. Original Relven repository untouched. Baseline phone/watch APKs and selected tests passed before edits. The release ID now matches the old Relven Play ID per owner instruction. Relven launcher labels, uploaded icon, CI artifact labels, README and migration documents changed locally.
