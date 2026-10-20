@@ -116,6 +116,14 @@ public final class LegacyRelvenMigration {
     }
   }
 
+  static void forEachArchiveRow(Context context, ArchiveRowConsumer consumer) throws IOException {
+    readArchive(context, consumer::accept);
+  }
+
+  interface ArchiveRowConsumer {
+    void accept(String table, Map<String, String> row) throws IOException;
+  }
+
   private static void readTables(JsonReader reader, RowVisitor visitor) throws IOException {
     reader.beginArray();
     while (reader.hasNext()) readTable(reader, visitor);
