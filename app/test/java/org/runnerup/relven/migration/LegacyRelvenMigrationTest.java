@@ -224,6 +224,61 @@ public class LegacyRelvenMigrationTest {
   }
 
   @Test
+  public void archivePreviewRequiresImportableActivityIdentityAndRejectsMismatches()
+      throws Exception {
+    JSONObject documentWithoutId = new JSONObject(activity("completed", "running", true));
+    documentWithoutId.remove("clientActivityId");
+    JSONObject archive = archive(18);
+    archive
+        .getJSONArray("tables")
+        .put(
+            table(
+                "cached_activity",
+                new String[] {
+                  "serverOrigin",
+                  "ownerUserId",
+                  "serverActivityId",
+                  "clientActivityId",
+                  "activityJson"
+                },
+                new JSONArray()
+                    .put(
+                        new JSONArray()
+                            .put(null)
+                            .put(null)
+                            .put(null)
+                            .put(null)
+                            .put(documentWithoutId.toString()))
+                    .put(
+                        new JSONArray()
+                            .put("https://relven.example")
+                            .put("owner-1")
+                            .put("server-1")
+                            .put(null)
+                            .put(documentWithoutId.toString()))
+                    .put(
+                        new JSONArray()
+                            .put("https://relven.example")
+                            .put("owner-1")
+                            .put("server-2")
+                            .put("different-client")
+                            .put(activity("completed", "running", true)))));
+    writeArchive(archive);
+
+    LegacyRelvenMigration.Preview preview = LegacyRelvenMigration.preview(context);
+
+    assertEquals(3, preview.getActivityCount());
+    assertEquals(
+        "supported="
+            + preview.getSupportedActivityCount()
+            + " unsupported="
+            + preview.getUnsupportedActivityCount(),
+        1,
+        preview.getSupportedActivityCount());
+    assertEquals(2, preview.getUnsupportedActivityCount());
+  }
+
+  @Test
   public void archivePreviewRejectsMalformedInputAndUsesColumnNames() throws Exception {
     JSONObject archive = archive(18);
     archive

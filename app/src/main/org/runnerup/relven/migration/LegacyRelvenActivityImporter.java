@@ -72,8 +72,8 @@ public final class LegacyRelvenActivityImporter {
       return;
     }
     String rowClientId = row.get("clientActivityId");
-    if (rowClientId != null && !rowClientId.isBlank()) {
-      if (!document.getClientActivityId().isBlank()
+    if (present(rowClientId)) {
+      if (present(document.getClientActivityId())
           && !rowClientId.equals(document.getClientActivityId())) {
         result.unsupported++;
         return;
@@ -85,7 +85,7 @@ public final class LegacyRelvenActivityImporter {
     String owner = row.get("ownerUserId");
     String serverId = row.get("serverActivityId");
     String sourceKey;
-    if (rowClientId != null && !rowClientId.isBlank()) {
+    if (present(rowClientId)) {
       sourceKey = "client:" + rowClientId;
     } else if (present(origin) && present(owner) && present(serverId)) {
       sourceKey = "server:" + part(origin) + part(owner) + part(serverId);
@@ -176,7 +176,7 @@ public final class LegacyRelvenActivityImporter {
   }
 
   private static boolean present(String value) {
-    return value != null && !value.isBlank();
+    return value != null && !value.trim().isEmpty();
   }
 
   private static String part(String value) {

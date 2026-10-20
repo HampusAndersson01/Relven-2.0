@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,9 +23,9 @@ import org.runnerup.workout.RelvenWorkoutImporter;
 public final class LegacyRelvenMigration {
   private static final String SOURCE_DATABASE = "relven-workouts.db";
   private static final Set<String> WORKOUT_COLUMNS =
-      Set.of("serverOrigin", "ownerUserId", "workoutId", "name", "revision", "documentJson");
+      columns("serverOrigin", "ownerUserId", "workoutId", "name", "revision", "documentJson");
   private static final Set<String> ACTIVITY_COLUMNS =
-      Set.of(
+      columns(
           "serverOrigin",
           "ownerUserId",
           "serverActivityId",
@@ -32,7 +33,13 @@ public final class LegacyRelvenMigration {
           "activityJson",
           "documentJson",
           "syncState");
-  private static final Set<String> PLAN_COLUMNS = Set.of("scheduleMovesJson", "scheduleSkipsJson");
+  private static final Set<String> PLAN_COLUMNS = columns("scheduleMovesJson", "scheduleSkipsJson");
+
+  private static Set<String> columns(String... values) {
+    Set<String> result = new HashSet<>();
+    Collections.addAll(result, values);
+    return Collections.unmodifiableSet(result);
+  }
 
   private LegacyRelvenMigration() {}
 
@@ -161,12 +168,12 @@ public final class LegacyRelvenMigration {
       case "cached_workout" -> WORKOUT_COLUMNS;
       case "cached_activity", "activity_outbox" -> ACTIVITY_COLUMNS;
       case "cached_plan" -> PLAN_COLUMNS;
-      case "active_workout" -> Set.of();
+      case "active_workout" -> Collections.emptySet();
       case "plan_mutation",
           "plan_schedule_move_outbox",
           "plan_schedule_skip_outbox",
           "activity_lifecycle_outbox" ->
-          Set.of("state");
+          columns("state");
       default -> null;
     };
   }
@@ -351,23 +358,25 @@ public final class LegacyRelvenMigration {
       String clientId =
           firstNonBlank(rowClientId, parsed == null ? null : parsed.getClientActivityId());
       String serverId = row.get("serverActivityId");
+      String origin = row.get("serverOrigin");
+      String owner = row.get("ownerUserId");
+      boolean clientMismatch =
+          !isBlank(rowClientId)
+              && parsed != null
+              && !isBlank(parsed.getClientActivityId())
+              && !rowClientId.equals(parsed.getClientActivityId());
+      boolean hasClientIdentity = !isBlank(clientId) && !clientMismatch;
+      boolean hasServerIdentity =
+          isBlank(clientId) && !isBlank(origin) && !isBlank(owner) && !isBlank(serverId);
       String identity =
-          !isBlank(clientId)
+          hasClientIdentity
               ? "client:" + clientId
-              : !isBlank(serverId)
-                  ? String.join(
-                      "\u0000",
-                      "server",
-                      nullToEmpty(row.get("serverOrigin")),
-                      nullToEmpty(row.get("ownerUserId")),
-                      serverId)
+              : hasServerIdentity
+                  ? "server:" + part(origin) + part(owner) + part(serverId)
                   : "row:" + (++activityOrdinal);
       if (!seenActivities.add(identity)) return;
       activityRecords++;
-      if (parsed != null
-          && (isBlank(rowClientId)
-              || isBlank(parsed.getClientActivityId())
-              || rowClientId.equals(parsed.getClientActivityId()))) {
+      if (parsed != null && (hasClientIdentity || hasServerIdentity)) {
         supportedActivities++;
       } else {
         unsupportedActivities++;
@@ -407,8 +416,8 @@ public final class LegacyRelvenMigration {
     return !isBlank(first) ? first : second;
   }
 
-  private static String nullToEmpty(String value) {
-    return value == null ? "" : value;
+  private static String part(String value) {
+    return value.length() + ":" + value;
   }
 
   private static boolean isBlank(String value) {
