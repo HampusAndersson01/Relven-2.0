@@ -7,6 +7,16 @@ import org.junit.Test
 
 class WearWorkoutDisplayTest {
   @Test
+  fun newHeaderSnapshotRemovesPhaseThatIsNoLongerPresent() {
+    val previous = mutableMapOf("HEADER/0.0" to "time", "CURRENT_STEP" to "uppvärmning")
+    val current = mapOf("HEADER/0.0" to "time")
+
+    replaceWearHeaderSnapshot(previous, current)
+
+    assertEquals(current, previous)
+  }
+
+  @Test
   fun mapsRunnerUpMetricsInConfiguredOrder() {
     val display =
         wearWorkoutDisplay(

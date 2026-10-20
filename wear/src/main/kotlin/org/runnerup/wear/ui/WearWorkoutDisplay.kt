@@ -7,6 +7,15 @@ internal data class WearWorkoutDisplay(
     val metrics: List<WearMetric>,
     val isPaused: Boolean)
 
+fun replaceWearHeaderSnapshot(
+    previous: MutableMap<String, String>,
+    snapshot: Map<String, String>
+): Map<String, String> {
+  previous.clear()
+  previous.putAll(snapshot)
+  return previous
+}
+
 internal fun wearWorkoutDisplay(
     headers: Map<String, String>,
     data: Map<String, String>,

@@ -31,6 +31,7 @@ import org.runnerup.common.util.Constants;
 import org.runnerup.common.util.ValueModel;
 import org.runnerup.service.StateService;
 import org.runnerup.wear.ui.WearWorkoutComposeContent;
+import org.runnerup.wear.ui.WearWorkoutDisplayKt;
 import org.runnerup.wear.ui.WearWorkoutPresentationState;
 
 public class RunInfoFragment extends Fragment implements ValueModel.ChangeListener<TrackerState> {
@@ -100,21 +101,33 @@ public class RunInfoFragment extends Fragment implements ValueModel.ChangeListen
     Bundle headers = mainActivity.getHeaders(headersTimestamp);
     if (headers != null) {
       headersTimestamp = headers.getLong(StateService.UPDATE_TIME);
-      update(headers);
+      updateHeaders(headers);
     }
   }
 
   private void update(Bundle b) {
+    update(b, false);
+  }
+
+  private void updateHeaders(Bundle b) {
+    update(b, true);
+  }
+
+  private void update(Bundle b, boolean isHeaderSnapshot) {
+    Map<String, String> nextHeaders = isHeaderSnapshot ? new HashMap<>() : headerValues;
     for (String key : b.keySet()) {
       Object value = b.get(key);
       if (value instanceof String) {
         if (key.startsWith(Constants.Wear.RunInfo.HEADER)
             || key.equals(Constants.Wear.RunInfo.CURRENT_STEP)) {
-          headerValues.put(key, (String) value);
+          nextHeaders.put(key, (String) value);
         } else {
           dataValues.put(key, (String) value);
         }
       }
+    }
+    if (isHeaderSnapshot) {
+      WearWorkoutDisplayKt.replaceWearHeaderSnapshot(headerValues, nextHeaders);
     }
     render();
   }
