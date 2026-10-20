@@ -13,7 +13,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /** Stores validated plans atomically without changing active workouts or activity history. */
 public final class RelvenPlanStore {
@@ -173,9 +177,78 @@ public final class RelvenPlanStore {
         || !previous.rootPlanId().equals(revision.rootPlanId())
         || highestRevision == Integer.MAX_VALUE
         || revision.revisionNumber() != highestRevision + 1
-        || revision.revisionNumber() <= previous.revisionNumber()) {
+        || revision.revisionNumber() != previous.revisionNumber() + 1) {
       throw new IOException("Plan revision does not follow a saved lineage");
     }
+    validateRevisionSnapshot(previous, revision);
+  }
+
+  private static void validateRevisionSnapshot(
+      RelvenPlanImporter.Plan previous, RelvenPlanImporter.Plan revision) throws IOException {
+    try {
+      JSONObject previousJson = new JSONObject(previous.sourceJson());
+      JSONObject revisionJson = new JSONObject(revision.sourceJson());
+      if (!previous.name().equals(revision.name())
+          || !previous.timezone().equals(revision.timezone())
+          || !canonicalJson(previousJson.getJSONArray("workouts"))
+              .equals(canonicalJson(revisionJson.getJSONArray("workouts")))) {
+        throw new IOException("Plan revision changed immutable plan content");
+      }
+
+      List<RelvenPlanImporter.Session> oldDays = previous.days();
+      List<RelvenPlanImporter.Session> newDays = revision.days();
+      if (oldDays.size() != newDays.size()) {
+        throw new IOException("Plan revision changed the schedule");
+      }
+      int changedDates = 0;
+      for (RelvenPlanImporter.Session oldDay : oldDays) {
+        RelvenPlanImporter.Session newDay = null;
+        for (RelvenPlanImporter.Session candidate : newDays) {
+          if (candidate.id().equals(oldDay.id())) {
+            newDay = candidate;
+            break;
+          }
+        }
+        if (newDay == null
+            || !oldDay.kind().equals(newDay.kind())
+            || !Objects.equals(oldDay.workoutId(), newDay.workoutId())
+            || !oldDay.notes().equals(newDay.notes())) {
+          throw new IOException("Plan revision changed an existing schedule entry");
+        }
+        if (!oldDay.date().equals(newDay.date())) changedDates++;
+      }
+      if (changedDates != 1) throw new IOException("Plan revision must move exactly one session");
+    } catch (JSONException error) {
+      throw new IOException("Plan revision snapshot is invalid", error);
+    }
+  }
+
+  private static String canonicalJson(Object value) throws JSONException {
+    if (value instanceof JSONObject object) {
+      List<String> keys = new ArrayList<>();
+      for (java.util.Iterator<String> iterator = object.keys(); iterator.hasNext(); ) {
+        keys.add(iterator.next());
+      }
+      Collections.sort(keys);
+      JSONObject canonical = new JSONObject();
+      for (String key : keys) canonical.put(key, canonicalValue(object.get(key)));
+      return canonical.toString();
+    }
+    if (value instanceof JSONArray array) {
+      JSONArray canonical = new JSONArray();
+      for (int index = 0; index < array.length(); index++) {
+        canonical.put(canonicalValue(array.get(index)));
+      }
+      return canonical.toString();
+    }
+    if (value instanceof String string) return JSONObject.quote(string);
+    return value.toString();
+  }
+
+  private static Object canonicalValue(Object value) throws JSONException {
+    if (value instanceof JSONObject object) return new JSONObject(canonicalJson(object));
+    if (value instanceof JSONArray array) return new JSONArray(canonicalJson(array));
+    return value;
   }
 
   private static String hashId(String id) {

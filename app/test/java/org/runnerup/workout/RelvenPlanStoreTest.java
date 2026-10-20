@@ -10,6 +10,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
+import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -159,7 +160,7 @@ public class RelvenPlanStoreTest {
   }
 
   @Test
-  public void revisionNumberContinuesWhenAnEarlierRevisionIsReactivated() throws Exception {
+  public void rejectsCreatingRevisionFromAnEarlierActiveSnapshot() throws Exception {
     RelvenPlanImporter.Plan original = RelvenPlanImporter.parse(JSON);
     RelvenPlanStore.save(context, original);
     RelvenPlanStore.activate(context, original);
@@ -167,12 +168,12 @@ public class RelvenPlanStoreTest {
         RelvenPlanStore.rescheduleActivePlan(context, original, "session-a", "2026-10-22");
     RelvenPlanStore.activate(context, original);
 
-    RelvenPlanImporter.Plan second =
-        RelvenPlanStore.rescheduleActivePlan(context, original, "session-a", "2026-10-23");
-
-    assertEquals(2, second.revisionNumber());
-    assertEquals(original.id(), second.previousRevisionId());
+    assertThrows(
+        java.io.IOException.class,
+        () -> RelvenPlanStore.rescheduleActivePlan(context, original, "session-a", "2026-10-23"));
     assertEquals("2026-10-22", first.days().get(0).date());
+    assertEquals(original.id(), RelvenPlanStore.activePlan(context).id());
+    assertEquals(2, RelvenPlanStore.list(context).size());
   }
 
   @Test
@@ -224,5 +225,43 @@ public class RelvenPlanStoreTest {
     assertEquals(
         List.of("store-test", "revision-1", "revision-2"),
         plans.stream().map(RelvenPlanImporter.Plan::id).toList());
+  }
+
+  @Test
+  public void rejectsRevisionWhosePredecessorIsNotTheLineageTip() throws Exception {
+    RelvenPlanImporter.Plan original = RelvenPlanImporter.parse(JSON);
+    RelvenPlanStore.save(context, original);
+    RelvenPlanImporter.Plan first =
+        RelvenPlanRevision.reschedule(original, "session-a", "2026-10-22", "revision-1");
+    RelvenPlanStore.save(context, first);
+    RelvenPlanImporter.Plan second =
+        RelvenPlanRevision.reschedule(first, "session-a", "2026-10-23", "revision-2");
+    RelvenPlanStore.save(context, second);
+    RelvenPlanImporter.Plan skippedParent =
+        RelvenPlanRevision.reschedule(original, "session-a", "2026-10-24", "revision-3", 3);
+
+    assertThrows(java.io.IOException.class, () -> RelvenPlanStore.save(context, skippedParent));
+    assertEquals(3, RelvenPlanStore.list(context).size());
+  }
+
+  @Test
+  public void rejectsRevisionThatChangesWorkoutOrAddsAnotherScheduleEntry() throws Exception {
+    RelvenPlanImporter.Plan original = RelvenPlanImporter.parse(JSON);
+    RelvenPlanStore.save(context, original);
+    RelvenPlanImporter.Plan rescheduled =
+        RelvenPlanRevision.reschedule(original, "session-a", "2026-10-22", "revision-1");
+    RelvenPlanImporter.Plan changedWorkout =
+        RelvenPlanImporter.parse(rescheduled.sourceJson().replace("Easy run", "Tempo run"));
+    JSONObject expandedJson = new JSONObject(rescheduled.sourceJson());
+    expandedJson
+        .getJSONArray("days")
+        .put(
+            new JSONObject().put("id", "extra-rest").put("date", "2026-10-23").put("kind", "rest"));
+    RelvenPlanImporter.Plan addedSession = RelvenPlanImporter.parse(expandedJson.toString());
+
+    assertThrows(java.io.IOException.class, () -> RelvenPlanStore.save(context, changedWorkout));
+    assertThrows(java.io.IOException.class, () -> RelvenPlanStore.save(context, addedSession));
+    assertEquals(1, RelvenPlanStore.list(context).size());
+    assertEquals("store-test", original.id());
   }
 }

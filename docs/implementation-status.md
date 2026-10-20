@@ -76,8 +76,9 @@
 
 - **In progress:** Versioned running-plan and workout schemas plus a strict local parser and atomic app-private package store are implemented. The importer rejects unsupported workout semantics, unknown fields, non-schema JSON types, invalid dates/timezones/references, packages over 4 MiB, JSON nesting over 32, and more than 100,000 JSON tokens.
 - **In progress:** Users can import, preview, save and activate plans. Today shows the active item and the Plan calendar shows its monthly schedule. Rescheduling one workout or rest item creates and activates a complete schema-v2 revision; the imported plan and prior revisions remain unchanged. Each revision keeps a root ID, sequence number and predecessor ID. Workout definitions and completed history are unchanged.
+- **Current increment:** Revisions are accepted only when they follow the saved lineage tip and preserve plan metadata, workout definitions, and every schedule entry except the date of exactly one moved session. Stale branches and edits disguised as reschedules are rejected.
 - **Pending:** Add/delete scheduled items and edit plan content; then build the AI Plan Kit from the canonical schema. Strength plans and plan-linked execution also remain pending.
-- **Verification:** Parser, revision transformation, store lineage/activation, Today-state and calendar-state tests pass locally. Full local and hosted verification for the current increment is recorded on its PR. No emulator or physical ADB device has been used for this increment.
+- **Verification:** Parser, revision transformation, store lineage/activation, Today-state and calendar-state tests pass locally. The lineage regression test was first observed failing, then passed with the validation fix. Full local and hosted verification for the current increment is recorded on its PR. No emulator or physical ADB device has been used for this increment.
 
 ## Later phases
 
