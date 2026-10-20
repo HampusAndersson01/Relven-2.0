@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 /** Stores validated plans atomically without changing active workouts or activity history. */
 public final class RelvenPlanStore {
@@ -29,6 +30,7 @@ public final class RelvenPlanStore {
     if (plan.sourceJson().getBytes(StandardCharsets.UTF_8).length > 4_194_304) {
       throw new IOException("Plan file is too large");
     }
+    if (verified.schemaVersion() == 2) validateRevisionLineage(context, verified);
     File directory = context.getDir("relven-plans", Context.MODE_PRIVATE);
     File destination = new File(directory, hashId(plan.id()) + ".json");
     if (destination.exists()) throw new IOException("Plan already imported: " + plan.name());
@@ -59,7 +61,10 @@ public final class RelvenPlanStore {
         throw new IOException("Saved plan is invalid: " + file.getName(), error);
       }
     }
-    plans.sort(Comparator.comparing(RelvenPlanImporter.Plan::name, String.CASE_INSENSITIVE_ORDER));
+    plans.sort(
+        Comparator.comparing(RelvenPlanImporter.Plan::name, String.CASE_INSENSITIVE_ORDER)
+            .thenComparingInt(RelvenPlanImporter.Plan::revisionNumber)
+            .thenComparing(RelvenPlanImporter.Plan::id));
     return Collections.unmodifiableList(new ArrayList<>(plans));
   }
 
@@ -117,6 +122,60 @@ public final class RelvenPlanStore {
             .remove(ACTIVE_PLAN_ID)
             .commit();
     if (!cleared) throw new IOException("Could not clear active plan");
+  }
+
+  /** Creates a new immutable schedule revision and activates it only after its package is saved. */
+  public static synchronized RelvenPlanImporter.Plan rescheduleActivePlan(
+      Context context, RelvenPlanImporter.Plan activePlan, String sessionId, String targetDate)
+      throws IOException {
+    RelvenPlanImporter.Plan current = activePlan(context);
+    if (current == null
+        || activePlan == null
+        || !current.id().equals(activePlan.id())
+        || !current.sourceJson().equals(activePlan.sourceJson())) {
+      throw new IOException("Plan changed before rescheduling");
+    }
+
+    int nextRevisionNumber = 1;
+    for (RelvenPlanImporter.Plan saved : list(context)) {
+      if (saved.rootPlanId().equals(current.rootPlanId())) {
+        if (saved.revisionNumber() == Integer.MAX_VALUE) {
+          throw new IOException("Plan revision limit reached");
+        }
+        nextRevisionNumber = Math.max(nextRevisionNumber, saved.revisionNumber() + 1);
+      }
+    }
+
+    RelvenPlanImporter.Plan revision =
+        RelvenPlanRevision.reschedule(
+            current, sessionId, targetDate, UUID.randomUUID().toString(), nextRevisionNumber);
+    save(context, revision);
+    activate(context, revision);
+    return revision;
+  }
+
+  private static void validateRevisionLineage(Context context, RelvenPlanImporter.Plan revision)
+      throws IOException {
+    RelvenPlanImporter.Plan root = null;
+    RelvenPlanImporter.Plan previous = null;
+    int highestRevision = 0;
+    for (RelvenPlanImporter.Plan saved : list(context)) {
+      if (saved.id().equals(revision.rootPlanId())) root = saved;
+      if (saved.id().equals(revision.previousRevisionId())) previous = saved;
+      if (saved.rootPlanId().equals(revision.rootPlanId())) {
+        highestRevision = Math.max(highestRevision, saved.revisionNumber());
+      }
+    }
+    if (root == null
+        || root.schemaVersion() != 1
+        || !root.id().equals(root.rootPlanId())
+        || previous == null
+        || !previous.rootPlanId().equals(revision.rootPlanId())
+        || highestRevision == Integer.MAX_VALUE
+        || revision.revisionNumber() != highestRevision + 1
+        || revision.revisionNumber() <= previous.revisionNumber()) {
+      throw new IOException("Plan revision does not follow a saved lineage");
+    }
   }
 
   private static String hashId(String id) {
