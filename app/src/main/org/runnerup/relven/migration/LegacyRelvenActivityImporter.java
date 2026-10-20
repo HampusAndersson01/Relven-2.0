@@ -99,7 +99,7 @@ public final class LegacyRelvenActivityImporter {
       return;
     }
     ActivityEntity activity = new ActivityEntity();
-    activity.setStartTime(java.util.Date.from(document.getStartedAt()));
+    activity.setStartTime(new java.util.Date(document.getStartedAtEpochMilliseconds()));
     activity.setDistance(document.getRouteDistanceMeters());
     activity.setTime(document.getActiveDurationSeconds());
     activity.setName(document.getWorkoutName());
@@ -111,7 +111,7 @@ public final class LegacyRelvenActivityImporter {
       point.setActivityId(activityId);
       point.setLap(0);
       point.setType(event.type);
-      point.setTime(document.getStartedAt().toEpochMilli() + event.elapsedMilliseconds);
+      point.setTime(document.getStartedAtEpochMilliseconds() + event.elapsedMilliseconds);
       point.setLatitude(event.sample.latitude);
       point.setLongitude(event.sample.longitude);
       point.setAltitude(event.sample.altitudeMeters);

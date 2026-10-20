@@ -1,12 +1,17 @@
 package org.runnerup.relven.migration;
 
 import android.location.Location;
-import java.time.Duration;
-import java.time.Instant;
+import java.text.ParseException;
+import java.text.ParsePosition;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -16,6 +21,9 @@ public final class LegacyRelvenActivityDocument {
   private static final int MAX_DOCUMENT_CHARS = 16 * 1024 * 1024;
   private static final int MAX_SAMPLES = 200_000;
   private static final double MAX_RUNNING_SEGMENT_SPEED_METERS_PER_SECOND = 15.0;
+  private static final Pattern ISO_INSTANT_PATTERN =
+      Pattern.compile(
+          "^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d{1,9}))?(Z|[+-]\\d{2}:\\d{2})$");
 
   public static final class RouteSample {
     public final long elapsedMilliseconds;
@@ -53,7 +61,7 @@ public final class LegacyRelvenActivityDocument {
 
   private final String clientActivityId;
   private final String workoutName;
-  private final Instant startedAt;
+  private final long startedAtEpochMilliseconds;
   private final long activeDurationSeconds;
   private final long elapsedMilliseconds;
   private final List<RouteSample> samples;
@@ -62,14 +70,14 @@ public final class LegacyRelvenActivityDocument {
   private LegacyRelvenActivityDocument(
       String clientActivityId,
       String workoutName,
-      Instant startedAt,
+      long startedAtEpochMilliseconds,
       long activeDurationSeconds,
       long elapsedMilliseconds,
       List<RouteSample> samples,
       List<PauseInterval> technicalPauses) {
     this.clientActivityId = clientActivityId;
     this.workoutName = workoutName;
-    this.startedAt = startedAt;
+    this.startedAtEpochMilliseconds = startedAtEpochMilliseconds;
     this.activeDurationSeconds = activeDurationSeconds;
     this.elapsedMilliseconds = elapsedMilliseconds;
     this.samples = Collections.unmodifiableList(samples);
@@ -89,9 +97,9 @@ public final class LegacyRelvenActivityDocument {
       if (workout == null || !"running".equalsIgnoreCase(workout.optString("sport"))) {
         throw new IllegalArgumentException("Legacy activity is not a running workout");
       }
-      Instant start = Instant.parse(root.getString("startedAt"));
-      Instant end = Instant.parse(root.getString("endedAt"));
-      long wallDuration = Duration.between(start, end).toMillis();
+      long start = parseInstantEpochMilliseconds(root.getString("startedAt"));
+      long end = parseInstantEpochMilliseconds(root.getString("endedAt"));
+      long wallDuration = Math.subtractExact(end, start);
       long activeSeconds = requiredWholeSeconds(root, "activeDurationSeconds");
       if (wallDuration <= 0
           || activeSeconds <= 0
@@ -147,9 +155,26 @@ public final class LegacyRelvenActivityDocument {
               pauses);
       result.getRouteDistanceMeters();
       return result;
-    } catch (JSONException | java.time.DateTimeException | ArithmeticException e) {
+    } catch (JSONException | ParseException | ArithmeticException e) {
       throw new IllegalArgumentException("Legacy activity document is malformed", e);
     }
+  }
+
+  private static long parseInstantEpochMilliseconds(String source) throws ParseException {
+    Matcher match = ISO_INSTANT_PATTERN.matcher(source);
+    if (!match.matches()) throw new ParseException("Invalid ISO instant", 0);
+    String fraction = match.group(2);
+    String milliseconds = fraction == null ? "000" : (fraction + "000").substring(0, 3);
+    String zone = "Z".equals(match.group(3)) ? "+00:00" : match.group(3);
+    String normalized = match.group(1) + "." + milliseconds + zone;
+    SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT);
+    format.setLenient(false);
+    ParsePosition position = new ParsePosition(0);
+    Date parsed = format.parse(normalized, position);
+    if (parsed == null || position.getIndex() != normalized.length()) {
+      throw new ParseException("Invalid ISO instant", Math.max(0, position.getErrorIndex()));
+    }
+    return parsed.getTime();
   }
 
   private static List<PauseInterval> parseTechnicalPauses(JSONArray deviations, long wallDuration)
@@ -237,8 +262,8 @@ public final class LegacyRelvenActivityDocument {
     return workoutName;
   }
 
-  public Instant getStartedAt() {
-    return startedAt;
+  public long getStartedAtEpochMilliseconds() {
+    return startedAtEpochMilliseconds;
   }
 
   public long getActiveDurationSeconds() {

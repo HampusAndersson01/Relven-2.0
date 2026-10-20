@@ -90,27 +90,27 @@ git commit -m "feat: summarize legacy Relven data"
 - The manifest records the composite legacy identity, destination filename, and SHA-256 of the generated workout JSON. Destination names are deterministic from the composite identity and safe for `WorkoutSerializer.getFile`.
 - Exact store boundary: `LegacyRelvenMigrationStore.stage(Context, SourceIdentity, Workout) -> StagedWorkout` writes one staged file outside the visible library; `LegacyRelvenMigrationStore.publish(Context, List<StagedWorkout>) -> StoreResult` reconciles the manifest and publishes the complete prepared batch. `StoreResult` reports imported, already imported, conflicting, and failed counts; `LegacyRelvenMigration` adds unsupported rows to form `ImportResult`. `SourceIdentity` contains `serverOrigin`, `ownerUserId`, `workoutId`, and `revision`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add Robolectric tests named `importKeepsDistinctCompositeIdentities`, `importIsIdempotent`, `importDoesNotOverwriteChangedOrUserFiles`, `importResumesAfterInterruptedPublish`, `importStorageFailureDoesNotPublishAnyWorkout`, and `importFailureLeavesLegacyArchiveAvailable`. Assert distinct origin/owner/revision rows produce distinct files and full identities in the manifest, a repeat imports zero additional files, changed destination contents remain untouched and are reported as conflicts, an interrupted publish is safely reconciled, and storage errors do not remove the archive or claim success.
 
-- [ ] **Step 2: Run the tests and verify the expected failures**
+- [x] **Step 2: Run the tests and verify the expected failures**
 
 Run: `.\gradlew.bat :app:testLatestDebugUnitTest --tests org.runnerup.relven.migration.LegacyRelvenMigrationStoreTest`
 
 Expected: tests fail because the migration store and `importSupported` do not exist.
 
-- [ ] **Step 3: Implement staged, idempotent publication**
+- [x] **Step 3: Implement staged, idempotent publication**
 
 Add `WorkoutSerializer.writeJSON(Writer, Workout)` as a public serialization entry point and close writers in `writeFile`. Implement a private staging directory, deterministic safe filenames, a hash-checked manifest, and atomic manifest replacement. Validate and stage every supported workout before publishing any library file. On restart, reconcile pending manifest entries by comparing destination hashes; never overwrite a pre-existing or changed file. Keep source identity and original content in the archive.
 
-- [ ] **Step 4: Run the focused tests and verify they pass**
+- [x] **Step 4: Run the focused tests and verify they pass**
 
 Run: `.\gradlew.bat :app:testLatestDebugUnitTest --tests org.runnerup.relven.migration.LegacyRelvenMigrationStoreTest`
 
 Expected: identity, duplicate, conflict, interruption, and storage failure tests pass.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add app/src/main/org/runnerup/relven/migration/LegacyRelvenMigration.java app/src/main/org/runnerup/relven/migration/LegacyRelvenMigrationStore.java app/src/main/org/runnerup/workout/WorkoutSerializer.java app/test/java/org/runnerup/relven/migration/LegacyRelvenMigrationStoreTest.java
@@ -133,27 +133,27 @@ git commit -m "feat: import legacy Relven workouts safely"
 - The source key is `clientActivityId` when present, otherwise `(serverOrigin, ownerUserId, serverActivityId)`. Client ID remains stable as outbox rows later receive server IDs or optional owner metadata, so cached/outbox copies deduplicate correctly. Retain origin, owner, and server ID as auxiliary provenance in the ledger. The original activity JSON remains only in the immutable archive.
 - Map only completed running documents with valid ISO instants, active duration, and at least two finite coordinate samples in strictly increasing elapsed-time order. Reject routes containing a segment faster than 15 m/s to avoid implausible GPS spikes. Use `activeDurationSeconds` for RunnerUp activity duration, derive distance by summing geodesic route segments, and set route-point timestamps to `startedAt + elapsedMilliseconds`. Insert a route start and end point. Translate valid `technical_pause` intervals to ordered pause/resume points at the nearest route coordinates. Do not claim that extra-recovery intervals or workout steps are represented in RunnerUp history.
 
-- [ ] **Step 1: Write failing conversion and persistence tests**
+- [x] **Step 1: Write failing conversion and persistence tests**
 
 Use synthetic schema-v18 archive fixtures only. Add tests named `activityImportMapsRunningSummaryAndRoute`, `activityImportMapsTechnicalPauseMarkers`, `activityImportRejectsUnsupportedDocumentsAndIsIdempotent`, and `activityImportStoresRouteAndPauseMarkersTransactionally`. Cover start/duration/sport/name/distance, timestamp offsets, altitude/speed/accuracy, pause/resume event ordering, cached/outbox deduplication, route-less and malformed documents, aborted outcomes, invalid coordinates, non-monotonic sample times, >15 m/s route spikes, transaction rollback on location or ledger insertion failure, and repeat import. Assert the legacy archive remains readable and the source database is never opened for writes.
 
-- [ ] **Step 2: Run the tests and verify the expected failures**
+- [x] **Step 2: Run the tests and verify the expected failures**
 
 Run: `.\gradlew.bat :app:testLatestDebugUnitTest --tests org.runnerup.relven.migration.LegacyRelvenActivityImporterTest`
 
 Expected: tests fail because the activity importer and transactional source ledger do not exist.
 
-- [ ] **Step 3: Implement validated mapping and idempotent transaction**
+- [x] **Step 3: Implement validated mapping and idempotent transaction**
 
 Consume only `LegacyRelvenActivityDocument` instances accepted by the shared parser from Task 1. Compute distance with Android's geodesic distance function, rejecting non-finite or implausible segments rather than silently corrupting totals. Create `ActivityEntity` with the supported running sport, active duration, route-derived distance, and a safe workout label. Create required `LocationEntity` rows with ordered start/GPS/pause/resume/end types, epoch-millisecond timestamps, lap 0, and available altitude/speed/accuracy values. Do not fabricate heart rate or cadence. Add a private migration-ledger table to `runnerup.db` keyed by the composite source identity and insert the activity, location rows, and ledger entry in one transaction. On duplicate ledger identity, report already imported; roll back everything on any insert error.
 
-- [ ] **Step 4: Run the focused importer tests**
+- [x] **Step 4: Run the focused importer tests**
 
 Run: `.\gradlew.bat :app:testLatestDebugUnitTest --tests org.runnerup.relven.migration.LegacyRelvenActivityImporterTest`
 
 Expected: route mapping, pause markers, unsupported classification, duplicate detection, and rollback tests pass.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 4**
 
 ```bash
 git add app/src/main/org/runnerup/relven/migration/LegacyRelvenActivityImporter.java app/src/main/org/runnerup/relven/migration/LegacyRelvenMigration.java app/test/java/org/runnerup/relven/migration/LegacyRelvenActivityImporterTest.java
@@ -176,21 +176,21 @@ git commit -m "feat: import eligible legacy Relven activities"
 - Consumes: `LegacyRelvenMigration.preview(Context) -> Preview`, `LegacyRelvenMigration.importWorkouts(Context) -> WorkoutImportResult`, `LegacyRelvenActivityImporter.importActivities(Context) -> ActivityImportResult`, and the existing legacy archive export action.
 - Produces: a Maintenance preference visible when legacy data is available; a review dialog with workout and activity eligibility counts and explicit Import/Cancel actions; background import with progress; and a completion/error message with the complete archive export still available.
 
-- [ ] **Step 1: Write failing UI tests**
+- [x] **Step 1: Write failing UI tests**
 
 Add Robolectric tests named `legacyReviewCancelLeavesWorkoutLibraryUnchanged`, `legacyReviewConfirmImportsAndShowsCounts`, and `reviewReportsImportFailureWithoutSuccess`. Assert the review explains that workouts are copied locally, eligible activities appear in history, plans are not activated, Cancel writes no workout/activity/ledger entry, confirm reports exact result counts, failure is visible and offers retry, and the archive export preference remains available.
 
-- [ ] **Step 2: Run the tests and verify the expected failures**
+- [x] **Step 2: Run the tests and verify the expected failures**
 
 Run: `.\gradlew.bat :app:testLatestDebugUnitTest --tests org.runnerup.view.SettingsMaintenanceFragmentTest`
 
 Expected: tests fail because the review/import preference and flow do not exist.
 
-- [ ] **Step 3: Implement the Maintenance flow and copy**
+- [x] **Step 3: Implement the Maintenance flow and copy**
 
 Add the review/import preference beside the existing archive export preference and show it when `LegacyRelvenVault.isAvailable(Context)` is true. Run preview and both importers sequentially on a single background executor; keep dialogs and feedback on the main thread. Show separate supported/unsupported workouts and activities, plans, active sessions, schedule changes, and pending operations. Require the explicit Import action. Localize new copy in English and Swedish. Keep export available after import and retain the archive on all error paths. Update migration and implementation status docs to state exactly which data is imported and which remains archived, and replace the stale stacked-PR status at the top of `implementation-status.md` with the current merged milestone state.
 
-- [ ] **Step 4: Run UI tests and the full local verification suite**
+- [x] **Step 4: Run UI tests and the full local verification suite**
 
 Run focused UI test: `.\gradlew.bat :app:testLatestDebugUnitTest --tests org.runnerup.view.SettingsMaintenanceFragmentTest`
 
@@ -198,7 +198,7 @@ Run full verification: `.\gradlew.bat spotlessApply :app:assembleLatestDebug :ap
 
 Expected: all three UI tests and the full suite pass; lint reports no new issues; Spotless passes; phone debug APK assembles. Confirm the diff contains no package ID, release key, or old-database write/delete changes. Do not run ADB or use a physical device.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 4**
 
 ```bash
 git add app/src/main/org/runnerup/view/SettingsMaintenanceFragment.java app/res/xml/settings_maintenance.xml app/res/values/pref_keys.xml common/src/main/res/values/strings.xml common/src/main/res/values-sv/strings.xml app/test/java/org/runnerup/view/SettingsMaintenanceFragmentTest.java docs/migration.md docs/implementation-status.md
