@@ -238,6 +238,7 @@ public final class LegacyRelvenMigration {
     private void countActivity(Map<String, String> row) {
       String document = row.get("activityJson");
       if (document == null) document = row.get("documentJson");
+      String rowClientId = row.get("clientActivityId");
       LegacyRelvenActivityDocument parsed = null;
       if (!isBlank(document)) {
         try {
@@ -247,8 +248,7 @@ public final class LegacyRelvenMigration {
         }
       }
       String clientId =
-          firstNonBlank(
-              row.get("clientActivityId"), parsed == null ? null : parsed.getClientActivityId());
+          firstNonBlank(rowClientId, parsed == null ? null : parsed.getClientActivityId());
       String serverId = row.get("serverActivityId");
       String identity =
           !isBlank(clientId)
@@ -264,9 +264,9 @@ public final class LegacyRelvenMigration {
       if (!seenActivities.add(identity)) return;
       activityRecords++;
       if (parsed != null
-          && (isBlank(clientId)
-              || isBlank(row.get("clientActivityId"))
-              || row.get("clientActivityId").equals(parsed.getClientActivityId()))) {
+          && (isBlank(rowClientId)
+              || isBlank(parsed.getClientActivityId())
+              || rowClientId.equals(parsed.getClientActivityId()))) {
         supportedActivities++;
       } else {
         unsupportedActivities++;

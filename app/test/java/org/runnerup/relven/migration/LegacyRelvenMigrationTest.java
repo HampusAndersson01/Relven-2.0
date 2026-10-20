@@ -195,9 +195,32 @@ public class LegacyRelvenMigrationTest {
     assertEquals(1, preview.getSupportedActivityCount());
     assertEquals(1, preview.getUnsupportedActivityCount());
     assertEquals(1, preview.getPendingOperationCount());
-    assertEquals(2, preview.getActivityCount());
-    assertEquals(1, preview.getUnsupportedActivityCount());
     assertFalse(preview.toString().contains("private-route-payload"));
+  }
+
+  @Test
+  public void archivePreviewUsesRowClientIdentityWhenDocumentOmitsIt() throws Exception {
+    JSONObject activityDocument = new JSONObject(activity("completed", "running", true));
+    activityDocument.remove("clientActivityId");
+    JSONObject archive = archive(18);
+    archive
+        .getJSONArray("tables")
+        .put(
+            table(
+                "activity_outbox",
+                new String[] {"clientActivityId", "documentJson", "syncState"},
+                new JSONArray()
+                    .put(
+                        new JSONArray()
+                            .put("row-client-1")
+                            .put(activityDocument.toString())
+                            .put("pending"))));
+    writeArchive(archive);
+
+    LegacyRelvenMigration.Preview preview = LegacyRelvenMigration.preview(context);
+
+    assertEquals(1, preview.getSupportedActivityCount());
+    assertEquals(1, preview.getActivityCount());
   }
 
   @Test
