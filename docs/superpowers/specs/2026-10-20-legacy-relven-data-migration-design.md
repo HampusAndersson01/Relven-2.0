@@ -1,10 +1,10 @@
 # Legacy Relven Data Migration Design
 
-**Status:** Migration direction approved by the project owner on 20 October 2026; detailed spec awaits review.
+**Status:** Implementation in progress under the owner's authorization to complete the master task; scope includes supported activity conversion required by the Phase Zero checklist.
 
 ## Goal
 
-Let an existing Relven user upgrade to Relven 2.0 with the required application ID `se.hampusandersson.relven`, recover supported running workouts into the new local workout library, and retain every other readable old record in an exportable archive without modifying the old database.
+Let an existing Relven user upgrade to Relven 2.0 with the required application ID `se.hampusandersson.relven`, recover supported running workouts into the new local workout library, map eligible completed running activities into local history, and retain every other readable old record in an exportable archive without modifying the old database.
 
 ## Context
 
@@ -15,8 +15,8 @@ Relven 2.0 already captures a read-only, integrity-checked JSON table archive on
 ## User flow
 
 1. On the first Relven 2.0 launch, keep the existing automatic archive capture. It must finish before any migration reads the old database, and it must not open the old database for writes.
-2. In Maintenance settings, expose a legacy-data review action when an old database or archive is available. Show counts of running workouts that can be imported, unsupported workout documents, plans and scheduled changes, activities, active-session data, and pending operations.
-3. Let the user review a deterministic preview. Explain that importing a workout makes a local executable copy, does not activate a plan or create calendar entries, and that non-importable records remain in the exportable archive.
+2. In Maintenance settings, expose a legacy-data review action when an old database or archive is available. Show counts of running workouts and completed running activities that can be imported, unsupported workout/activity documents, plans and scheduled changes, active-session data, and pending operations.
+3. Let the user review a deterministic preview. Explain that importing a workout makes a local executable copy and does not activate a plan or create calendar entries; importing an activity creates a local history record. Records that cannot be represented remain in the exportable archive.
 4. Require an explicit Import action. Cancellation leaves the new workout library unchanged.
 5. After import, show imported, already imported, unsupported, and failed counts, plus an action to export the complete archive.
 
@@ -29,7 +29,9 @@ If capture or archive validation fails, offer a retry and keep migration disable
 - Use a deterministic destination filename derived from that complete identity. Re-running migration must recognize records already imported and must not overwrite a user-created workout or a changed imported file. A conflicting destination is reported for review rather than replaced.
 - Prepare and validate the entire selected batch before changing the workout library. A failed parse or write must not leave an unreported partial migration. Persist enough per-record progress to safely resume after process death.
 - Do not replay old server operations or credentials. Do not activate, reschedule, or edit a plan as a side effect of importing its workout definitions.
-- Retain legacy plans, activity history, active-session snapshots, plan move/skip history, and pending operations in the archive and report their counts. They are not represented as migrated into the new app until a dedicated importer and duplicate policy exist.
+- Import only completed activities with a parseable document, valid start/end timestamps, supported running sport, and at least two valid location samples with finite coordinates and monotonic elapsed times. Reject a route if a segment implies a running speed above 15 m/s so GPS spikes cannot inflate migrated distance. Derive distance from route samples because legacy activity documents do not store summary distance. Set RunnerUp's duration from the legacy active duration and map sample timestamps from the start time plus each sample's wall elapsed offset. Map technical-pause intervals to RunnerUp pause/resume points; retain extra-recovery intervals and all workout steps in the original archive because RunnerUp activity history cannot represent them. Aborted, malformed, route-less, and non-running activities remain in the archive and are reported unsupported. The complete original document remains recoverable in the archive.
+- Use `clientActivityId` as the primary stable source identity because it remains unchanged as a record moves from the outbox into cached history; retain origin, owner, and server activity ID as auxiliary provenance. Use origin, owner, and server ID only when a legacy record has no client ID. Persist an import manifest for idempotency. Do not mutate archive rows, replay pending operations, or overwrite user activities.
+- Retain legacy plans, active-session snapshots, plan move/skip history, and pending operations in the archive and report their counts. These are not migrated until dedicated importers and duplicate policies exist.
 - Never delete or rewrite `relven-workouts.db` or its archive as part of migration.
 
 ## Error handling and privacy
@@ -46,4 +48,4 @@ Archive corruption, unsupported records, duplicate identities, filename conflict
 
 ## Explicit limits
 
-This milestone migrates only running workout definitions that pass the existing importer. It preserves but does not yet convert legacy activities, training plans, calendar state, or pending sync operations. Those records remain recoverable in the archive and must not be described in the UI or release notes as imported. Activity migration, plan activation/scheduling migration, and a Play upload remain separate work.
+This milestone migrates running workout definitions accepted by the existing importer and completed running activities that meet the route and timestamp requirements above. It preserves but does not convert legacy training plans, calendar state, active sessions, or pending sync operations. Unsupported activities and other legacy records remain recoverable in the archive and must not be described as imported. Plan activation/scheduling migration and a Play upload remain separate work.
