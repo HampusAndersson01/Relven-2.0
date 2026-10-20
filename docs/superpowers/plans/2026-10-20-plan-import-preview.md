@@ -51,5 +51,5 @@
 - [x] Add a separate plan import action with the Android document picker.
 - [x] Read and validate off the main thread, then show plan preview with Save and Cancel.
 - [x] Save only after acceptance through `RelvenPlanStore.save`; show clear duplicate/error/success feedback.
-- [ ] Verify build, all unit tests, lint, and formatting; request independent review before PR.
+- [x] Verify build, all unit tests, lint, and formatting; request independent review before PR.
 - [ ] Commit, open one PR, attach it to this task, wait for hosted checks, then merge before any next phase.

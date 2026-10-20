@@ -62,7 +62,7 @@
 - **In progress:** Versioned running-plan and workout schemas plus a strict local parser and atomic app-private package store are being added. The importer rejects unsupported workout semantics, unknown fields, non-schema JSON types, invalid dates/timezones/references, packages over 4 MiB, JSON nesting over 32, and more than 100,000 JSON tokens.
 - **In progress:** Users can choose a plan JSON package from the workout manager, validate it before a review summary, save after explicit confirmation, and reopen saved plans from app-private storage. Import does not activate plans or change the current schedule; plan dates are treated as one-time.
 - **Pending:** Add calendar scheduling and explicit plan activation/revisions, then build the AI Plan Kit from the canonical schema.
-- **Verification:** Parser, bounded-read, summary, and store unit tests plus debug build, full app unit tests, lint, and Spotless pass locally. This slice has not yet had hosted CI or independent review. No device is being used.
+- **Verification:** Parser, bounded-read, summary, and store unit tests plus debug build, full app unit tests, lint, and Spotless pass locally. Independent review approved the Android API 24 compatibility changes; hosted CI is pending. No device is being used.
 
 ## Later phases
 
