@@ -22,7 +22,7 @@ import org.runnerup.workout.RelvenWorkoutImporter;
 public final class LegacyRelvenMigration {
   private static final String SOURCE_DATABASE = "relven-workouts.db";
   private static final Set<String> WORKOUT_COLUMNS =
-      Set.of("serverOrigin", "ownerUserId", "workoutId", "revision", "documentJson");
+      Set.of("serverOrigin", "ownerUserId", "workoutId", "name", "revision", "documentJson");
   private static final Set<String> ACTIVITY_COLUMNS =
       Set.of(
           "serverOrigin",
@@ -37,6 +37,38 @@ public final class LegacyRelvenMigration {
   private LegacyRelvenMigration() {}
 
   public static Preview preview(Context context) throws IOException {
+    PreviewCounter counter = new PreviewCounter();
+    readArchive(context, counter);
+    return counter.toPreview();
+  }
+
+  public static WorkoutImportResult importWorkouts(Context context) {
+    try {
+      preview(context); // Validate the complete archive before creating staged files.
+    } catch (IOException e) {
+      return new WorkoutImportResult(0, 0, 0, 0, 1);
+    }
+    LegacyRelvenMigrationStore store = new LegacyRelvenMigrationStore(context);
+    WorkoutImportAccumulator accumulator = new WorkoutImportAccumulator(context, store);
+    try {
+      readArchive(context, accumulator);
+    } catch (IOException e) {
+      accumulator.failed++;
+      accumulator.stageFailed = true;
+    }
+    if (accumulator.stageFailed) {
+      return new WorkoutImportResult(0, 0, accumulator.unsupported, 0, accumulator.failed);
+    }
+    LegacyRelvenMigrationStore.StoreResult published = store.publish(accumulator.staged);
+    return new WorkoutImportResult(
+        published.getImportedCount(),
+        published.getAlreadyImportedCount(),
+        accumulator.unsupported,
+        published.getConflictingCount(),
+        accumulator.failed + published.getFailedCount());
+  }
+
+  private static void readArchive(Context context, RowVisitor visitor) throws IOException {
     if (!LegacyRelvenVault.captureIfPresent(context)) {
       throw new IOException("No legacy Relven archive is available");
     }
@@ -49,7 +81,6 @@ public final class LegacyRelvenMigration {
       String snapshotType = null;
       String sourceDatabase = null;
       boolean foundTables = false;
-      PreviewCounter counter = new PreviewCounter();
       while (reader.hasNext()) {
         String name = reader.nextName();
         switch (name) {
@@ -59,8 +90,13 @@ public final class LegacyRelvenMigration {
           case "tables" -> {
             if (foundTables)
               throw new IOException("Legacy archive contains duplicate tables arrays");
+            if (schemaVersion != 1
+                || !"table-row-archive".equals(snapshotType)
+                || !SOURCE_DATABASE.equals(sourceDatabase)) {
+              throw new IOException("Legacy archive header is unsupported or incomplete");
+            }
             foundTables = true;
-            readTables(reader, counter);
+            readTables(reader, visitor);
           }
           default -> reader.skipValue();
         }
@@ -75,19 +111,18 @@ public final class LegacyRelvenMigration {
           || !foundTables) {
         throw new IOException("Legacy archive header is unsupported or incomplete");
       }
-      return counter.toPreview();
     } catch (IllegalStateException e) {
       throw new IOException("Legacy archive is malformed", e);
     }
   }
 
-  private static void readTables(JsonReader reader, PreviewCounter counter) throws IOException {
+  private static void readTables(JsonReader reader, RowVisitor visitor) throws IOException {
     reader.beginArray();
-    while (reader.hasNext()) readTable(reader, counter);
+    while (reader.hasNext()) readTable(reader, visitor);
     reader.endArray();
   }
 
-  private static void readTable(JsonReader reader, PreviewCounter counter) throws IOException {
+  private static void readTable(JsonReader reader, RowVisitor visitor) throws IOException {
     reader.beginObject();
     String tableName = null;
     List<String> columns = null;
@@ -103,7 +138,7 @@ public final class LegacyRelvenMigration {
           } else {
             if (columns == null)
               throw new IOException("Legacy table columns precede rows requirement failed");
-            readRows(reader, tableName, columns, wanted, counter);
+            readRows(reader, tableName, columns, wanted, visitor);
           }
         }
         default -> reader.skipValue();
@@ -137,16 +172,12 @@ public final class LegacyRelvenMigration {
   }
 
   private static void readRows(
-      JsonReader reader,
-      String table,
-      List<String> columns,
-      Set<String> wanted,
-      PreviewCounter counter)
+      JsonReader reader, String table, List<String> columns, Set<String> wanted, RowVisitor visitor)
       throws IOException {
     reader.beginArray();
     while (reader.hasNext()) {
       Map<String, String> values = readRow(reader, columns, wanted);
-      counter.accept(table, values);
+      visitor.accept(table, values);
     }
     reader.endArray();
   }
@@ -180,7 +211,68 @@ public final class LegacyRelvenMigration {
     return null;
   }
 
-  private static final class PreviewCounter {
+  private interface RowVisitor {
+    void accept(String table, Map<String, String> row) throws IOException;
+  }
+
+  private static final class WorkoutImportAccumulator implements RowVisitor {
+    private final Context context;
+    private final LegacyRelvenMigrationStore store;
+    private final List<LegacyRelvenMigrationStore.StagedWorkout> staged = new ArrayList<>();
+    private int unsupported;
+    private int failed;
+    private boolean stageFailed;
+
+    private WorkoutImportAccumulator(Context context, LegacyRelvenMigrationStore store) {
+      this.context = context.getApplicationContext();
+      this.store = store;
+    }
+
+    @Override
+    public void accept(String table, Map<String, String> row) {
+      if (!"cached_workout".equals(table)) return;
+      String origin = row.get("serverOrigin");
+      String owner = row.get("ownerUserId");
+      String workoutId = row.get("workoutId");
+      String revisionText = row.get("revision");
+      String document = row.get("documentJson");
+      if (isBlank(origin)
+          || isBlank(owner)
+          || isBlank(workoutId)
+          || isBlank(revisionText)
+          || isBlank(document)) {
+        unsupported++;
+        return;
+      }
+      int revision;
+      org.runnerup.workout.Workout workout;
+      try {
+        revision = Integer.parseInt(revisionText);
+        if (revision < 0) throw new IllegalArgumentException("Invalid revision");
+        workout = RelvenWorkoutImporter.parse(document);
+      } catch (RuntimeException e) {
+        unsupported++;
+        return;
+      }
+      if (stageFailed) {
+        failed++;
+        return;
+      }
+      LegacyRelvenMigrationStore.SourceIdentity identity;
+      try {
+        String sourceName = row.get("name");
+        identity =
+            new LegacyRelvenMigrationStore.SourceIdentity(
+                origin, owner, workoutId, revision, sourceName);
+        staged.add(store.stage(context, identity, workout));
+      } catch (IOException | IllegalArgumentException e) {
+        failed++;
+        stageFailed = true;
+      }
+    }
+  }
+
+  private static final class PreviewCounter implements RowVisitor {
     private int supportedWorkouts;
     private int unsupportedWorkouts;
     private int supportedActivities;
@@ -193,7 +285,8 @@ public final class LegacyRelvenMigration {
     private long activityOrdinal;
     private final Set<String> seenActivities = new HashSet<>();
 
-    void accept(String table, Map<String, String> row) {
+    @Override
+    public void accept(String table, Map<String, String> row) {
       switch (table) {
         case "cached_workout" -> countWorkout(row);
         case "cached_activity" -> countActivity(row);
@@ -380,6 +473,47 @@ public final class LegacyRelvenMigration {
 
     public int getPendingOperationCount() {
       return pendingOperationCount;
+    }
+  }
+
+  public static final class WorkoutImportResult {
+    private final int importedCount;
+    private final int alreadyImportedCount;
+    private final int unsupportedCount;
+    private final int conflictingCount;
+    private final int failedCount;
+
+    private WorkoutImportResult(
+        int importedCount,
+        int alreadyImportedCount,
+        int unsupportedCount,
+        int conflictingCount,
+        int failedCount) {
+      this.importedCount = importedCount;
+      this.alreadyImportedCount = alreadyImportedCount;
+      this.unsupportedCount = unsupportedCount;
+      this.conflictingCount = conflictingCount;
+      this.failedCount = failedCount;
+    }
+
+    public int getImportedCount() {
+      return importedCount;
+    }
+
+    public int getAlreadyImportedCount() {
+      return alreadyImportedCount;
+    }
+
+    public int getUnsupportedCount() {
+      return unsupportedCount;
+    }
+
+    public int getConflictingCount() {
+      return conflictingCount;
+    }
+
+    public int getFailedCount() {
+      return failedCount;
     }
   }
 }
