@@ -2,6 +2,7 @@ package org.runnerup.relven.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -197,7 +198,19 @@ private fun CalendarDateCell(
         if (day.isToday) append(", ").append(stringResource(R.string.Plan_calendar_today))
         if (day.isSelected) append(", ").append(stringResource(R.string.Plan_calendar_selected))
       }
-  val selectedColor = if (day.isSelected) RelvenColors.Orange else Color.Transparent
+  val emphasis = calendarDateEmphasis(day)
+  val selectedColor =
+      if (emphasis == CalendarDateEmphasis.Selected || emphasis == CalendarDateEmphasis.TodayAndSelected) {
+        RelvenColors.Orange
+      } else {
+        Color.Transparent
+      }
+  val outlineColor =
+      when (emphasis) {
+        CalendarDateEmphasis.Today -> RelvenColors.Orange
+        CalendarDateEmphasis.TodayAndSelected -> Color.White
+        else -> Color.Transparent
+      }
   val textColor =
       when {
         day.isSelected -> Color.White
@@ -209,7 +222,8 @@ private fun CalendarDateCell(
       modifier = modifier.heightIn(min = 48.dp).semantics {
         contentDescription = accessibilityLabel
         selected = day.isSelected
-      }.clip(CircleShape).background(selectedColor).clickable(role = Role.Button, onClick = onClick),
+      }.border(1.dp, outlineColor, CircleShape).clip(CircleShape).background(selectedColor)
+          .clickable(role = Role.Button, onClick = onClick),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.Center) {
     Text(day.dayNumber.toString(), color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Medium)

@@ -80,6 +80,6 @@
 ### Task 4: Review and integrate
 
 - [x] Run full local debug/release build, app unit tests, lint, Spotless, and `git diff --check`; inspect resulting code and responsive layouts where practical.
-- [ ] Request one independent review of the complete branch; fix actionable findings with test-first changes.
+- [x] Request one independent review of the complete branch; fix actionable findings with test-first changes. Review caught missing visible treatment for today; added state mapping and today/selection combination tests, then confirmed the outlined states in follow-up review.
 - [ ] Commit and open only one PR, attach it to this task, wait for hosted CI, merge, and verify no Relven PR remains open before starting another milestone.
 - [ ] Do not use the physical Android device or shared ADB server during this increment.

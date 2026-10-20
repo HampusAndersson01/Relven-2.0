@@ -93,6 +93,18 @@ class PlanCalendarStateTest {
     assertEquals("Tuesday 20 October 2026", state.selectedDateLabel)
   }
 
+  @Test
+  fun keepsTodayVisibleSeparatelyFromTheSelectedDate() {
+    val selectedToday = calendarState(plan, "2026-10", "2026-10-20", 1_792_449_000_000L).days[22]
+
+    assertEquals(CalendarDateEmphasis.TodayAndSelected, calendarDateEmphasis(selectedToday))
+    assertEquals(CalendarDateEmphasis.Today, calendarDateEmphasis(selectedToday.copy(isSelected = false)))
+    assertEquals(CalendarDateEmphasis.Selected, calendarDateEmphasis(selectedToday.copy(isToday = false)))
+    assertEquals(
+        CalendarDateEmphasis.Default,
+        calendarDateEmphasis(selectedToday.copy(isToday = false, isSelected = false)))
+  }
+
   private fun calendarState(
       plan: RelvenPlanImporter.Plan,
       month: String,

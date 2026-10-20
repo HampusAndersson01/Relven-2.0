@@ -36,6 +36,21 @@ internal data class PlanCalendarDay(
     val isSelected: Boolean,
     val entries: List<PlanCalendarEntry>)
 
+internal enum class CalendarDateEmphasis {
+  Default,
+  Today,
+  Selected,
+  TodayAndSelected
+}
+
+internal fun calendarDateEmphasis(day: PlanCalendarDay): CalendarDateEmphasis =
+    when {
+      day.isToday && day.isSelected -> CalendarDateEmphasis.TodayAndSelected
+      day.isToday -> CalendarDateEmphasis.Today
+      day.isSelected -> CalendarDateEmphasis.Selected
+      else -> CalendarDateEmphasis.Default
+    }
+
 internal sealed interface PlanCalendarEntry {
   data class Workout(val workoutId: String, val workoutName: String, val notes: String) :
       PlanCalendarEntry
