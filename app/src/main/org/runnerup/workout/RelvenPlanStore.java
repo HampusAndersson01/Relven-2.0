@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -55,7 +56,7 @@ public final class RelvenPlanStore {
       }
     }
     plans.sort(Comparator.comparing(RelvenPlanImporter.Plan::name, String.CASE_INSENSITIVE_ORDER));
-    return List.copyOf(plans);
+    return Collections.unmodifiableList(new ArrayList<>(plans));
   }
 
   private static String hashId(String id) {
