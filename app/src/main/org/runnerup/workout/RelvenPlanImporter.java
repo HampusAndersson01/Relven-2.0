@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -17,6 +18,8 @@ import org.json.JSONObject;
 
 /** Validates a dated, offline running plan before it can be saved or scheduled. */
 public final class RelvenPlanImporter {
+  private static final int MAX_PACKAGE_BYTES = 4_194_304;
+
   private RelvenPlanImporter() {}
 
   public record Session(String id, String date, String kind, String workoutId, String notes) {}
@@ -39,8 +42,16 @@ public final class RelvenPlanImporter {
 
   public static Plan parse(String json) {
     try {
+      RelvenJsonLimits.validate(json);
+      if (json == null
+          || json.length() > MAX_PACKAGE_BYTES
+          || json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PACKAGE_BYTES) {
+        throw invalid("package too large");
+      }
       JSONObject root = new JSONObject(json);
-      if (!"relven.plan".equals(root.getString("format")) || root.getInt("schemaVersion") != 1) {
+      allowOnly(
+          root, "plan", "format", "schemaVersion", "id", "name", "timezone", "workouts", "days");
+      if (!"relven.plan".equals(text(root, "format")) || integer(root, "schemaVersion") != 1) {
         throw invalid("format or version");
       }
       String id = text(root, "id");
@@ -77,6 +88,7 @@ public final class RelvenPlanImporter {
       dateFormat.setLenient(false);
       for (int i = 0; i < dayArray.length(); i++) {
         JSONObject day = dayArray.getJSONObject(i);
+        allowOnly(day, "day", "id", "date", "kind", "workoutId", "notes");
         String sessionId = text(day, "id");
         if (!sessionIds.add(sessionId)) throw invalid("duplicate session id");
         String date = text(day, "date");
@@ -88,8 +100,13 @@ public final class RelvenPlanImporter {
         } catch (ParseException error) {
           throw invalid("date");
         }
-        String kind = day.getString("kind");
-        String notes = day.optString("notes", "");
+        String kind = text(day, "kind");
+        String notes = "";
+        if (day.has("notes")) {
+          Object value = day.get("notes");
+          if (!(value instanceof String)) throw invalid("notes");
+          notes = (String) value;
+        }
         if (notes.length() > 1000) throw invalid("notes");
         String workoutId = null;
         switch (kind) {
@@ -116,9 +133,33 @@ public final class RelvenPlanImporter {
   }
 
   private static String text(JSONObject object, String key) throws JSONException {
-    String value = object.getString(key);
+    Object raw = object.get(key);
+    if (!(raw instanceof String)) throw invalid(key);
+    String value = (String) raw;
     if (value.isBlank() || value.length() > 160) throw invalid(key);
     return value;
+  }
+
+  private static int integer(JSONObject object, String key) throws JSONException {
+    Object raw = object.get(key);
+    if (!(raw instanceof Number number)
+        || !Double.isFinite(number.doubleValue())
+        || number.doubleValue() != Math.rint(number.doubleValue())
+        || number.longValue() < Integer.MIN_VALUE
+        || number.longValue() > Integer.MAX_VALUE) {
+      throw invalid(key);
+    }
+    return number.intValue();
+  }
+
+  private static void allowOnly(JSONObject object, String label, String... allowed)
+      throws JSONException {
+    Set<String> fields = Set.of(allowed);
+    Iterator<String> keys = object.keys();
+    while (keys.hasNext()) {
+      String key = keys.next();
+      if (!fields.contains(key)) throw invalid("unknown " + label + " field: " + key);
+    }
   }
 
   private static IllegalArgumentException invalid(String what) {

@@ -13,7 +13,8 @@ import java.security.NoSuchAlgorithmException;
 public final class RelvenPlanStore {
   private RelvenPlanStore() {}
 
-  public static void save(Context context, RelvenPlanImporter.Plan plan) throws IOException {
+  public static synchronized void save(Context context, RelvenPlanImporter.Plan plan)
+      throws IOException {
     RelvenPlanImporter.Plan verified = RelvenPlanImporter.parse(plan.sourceJson());
     if (!verified.id().equals(plan.id())) throw new IOException("Plan ID changed before saving");
     if (plan.sourceJson().getBytes(StandardCharsets.UTF_8).length > 4_194_304) {
@@ -37,7 +38,8 @@ public final class RelvenPlanStore {
 
   private static String hashId(String id) {
     try {
-      byte[] digest = MessageDigest.getInstance("SHA-256").digest(id.getBytes(StandardCharsets.UTF_8));
+      byte[] digest =
+          MessageDigest.getInstance("SHA-256").digest(id.getBytes(StandardCharsets.UTF_8));
       StringBuilder result = new StringBuilder(digest.length * 2);
       for (byte value : digest) {
         result.append(Character.forDigit((value >> 4) & 0xF, 16));
