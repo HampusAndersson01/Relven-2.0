@@ -83,6 +83,22 @@ public class FitWorkoutImporterTest {
   }
 
   @Test
+  public void importsOpenStepWhenDurationFieldIsOmitted() {
+    byte[] file = fitOpenStepWithoutDuration();
+    Workout workout = FitWorkoutImporter.parse(file);
+    assertEquals(null, workout.getSteps().get(0).getDurationType());
+  }
+
+  @Test
+  public void rejectsFilesWithTooManyRecords() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> FitWorkoutImporter.parse(fitWithUnknownMessages(4_100)));
+    assertTrue(error.getMessage().contains("too many records"));
+  }
+
+  @Test
   public void defaultsOmittedOptionalIntensityToActive() {
     byte[] file = fitWithoutIntensity(step(0, 0, 60_000, 2, 0, 0, 0, 0));
     assertEquals(Intensity.ACTIVE, FitWorkoutImporter.parse(file).getSteps().get(0).getIntensity());
@@ -210,6 +226,58 @@ public class FitWorkoutImporterTest {
     file.writeBytes(records.toByteArray());
     little(file, crc(file.toByteArray()), 2);
     return file.toByteArray();
+  }
+
+  private static byte[] fitOpenStepWithoutDuration() {
+    ByteArrayOutputStream records = new ByteArrayOutputStream();
+    definition(records, 0, 0, new int[][] {{0, 1, 0}});
+    records.write(0);
+    records.write(5);
+    definition(records, 1, 26, new int[][] {{4, 1, 0}, {6, 2, 0x84}});
+    records.write(1);
+    records.write(1);
+    little(records, 1, 2);
+    definition(
+        records,
+        2,
+        27,
+        new int[][] {
+          {254, 2, 0x84}, {1, 1, 0}, {3, 1, 0}, {4, 4, 0x86}, {5, 4, 0x86}, {6, 4, 0x86}
+        });
+    records.write(2);
+    little(records, 0, 2);
+    records.write(5); // FIT open duration
+    records.write(2); // FIT open target
+    little(records, 0, 4);
+    little(records, 0, 4);
+    little(records, 0, 4);
+    return file(records.toByteArray());
+  }
+
+  private static byte[] fitWithUnknownMessages(int count) {
+    ByteArrayOutputStream records = new ByteArrayOutputStream();
+    definition(records, 0, 0, new int[][] {{0, 1, 0}});
+    records.write(0);
+    records.write(5);
+    definition(records, 1, 99, new int[][] {});
+    for (int i = 0; i < count; i++) records.write(1);
+    return file(records.toByteArray());
+  }
+
+  private static byte[] file(byte[] records) {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    output.write(14);
+    output.write(0x20);
+    little(output, 0, 2);
+    little(output, records.length, 4);
+    output.write('.');
+    output.write('F');
+    output.write('I');
+    output.write('T');
+    little(output, crc(output.toByteArray()), 2);
+    output.writeBytes(records);
+    little(output, crc(output.toByteArray()), 2);
+    return output.toByteArray();
   }
 
   private static void definition(

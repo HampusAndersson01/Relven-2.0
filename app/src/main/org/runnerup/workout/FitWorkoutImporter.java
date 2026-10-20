@@ -10,6 +10,7 @@ import org.runnerup.common.util.Constants;
 /** A bounded FIT Workout reader for running steps executable by the existing workout engine. */
 public final class FitWorkoutImporter {
   private static final int MAX_FILE_BYTES = 1_048_576;
+  private static final int MAX_RECORDS = 4_096;
   private static final int MAX_STEPS = 256;
   private static final int FILE_ID = 0;
   private static final int WORKOUT = 26;
@@ -45,10 +46,12 @@ public final class FitWorkoutImporter {
     Definition[] definitions = new Definition[16];
     List<IndexedStep> steps = new ArrayList<>();
     int position = headerSize;
+    int recordCount = 0;
     int fileType = -1;
     int expectedSteps = -1;
     boolean firstData = true;
     while (position < end) {
+      if (++recordCount > MAX_RECORDS) throw unsupported("too many records");
       int record = unsigned(bytes[position++]);
       boolean compressed = (record & 0x80) != 0;
       int local = compressed ? ((record >> 5) & 3) : (record & 15);
@@ -85,6 +88,21 @@ public final class FitWorkoutImporter {
       }
       Definition definition = definitions[local];
       if (definition == null) throw invalid("data without definition");
+      if (firstData && definition.global != FILE_ID) {
+        throw invalid("first message must be File ID");
+      }
+      if (!firstData
+          && definition.global != FILE_ID
+          && definition.global != WORKOUT
+          && definition.global != WORKOUT_STEP) {
+        for (Field field : definition.fields) {
+          require(position + field.size <= end, "field data");
+          position += field.size;
+        }
+        require(position + definition.developerSize <= end, "developer data");
+        position += definition.developerSize;
+        continue;
+      }
       Map<Integer, Object> fields = new HashMap<>();
       for (Field field : definition.fields) {
         require(position + field.size <= end, "field data");
@@ -183,7 +201,8 @@ public final class FitWorkoutImporter {
       case 3 -> step.setIntensity(Intensity.COOLDOWN);
       default -> throw unsupported("intensity");
     }
-    long duration = number(fields, 2, "duration value");
+    long duration =
+        durationType == 0 || durationType == 1 ? number(fields, 2, "duration value") : 0;
     switch (durationType) {
       case 0 -> {
         if (duration == 0) throw invalid("zero time duration");
@@ -196,7 +215,9 @@ public final class FitWorkoutImporter {
         step.setDurationValue(duration / 100.0);
       }
       case 5 -> {
-        if (duration != 0) throw unsupported("open duration value");
+        if (fields.containsKey(2) && number(fields, 2, "duration value") != 0) {
+          throw unsupported("open duration value");
+        }
         step.setDurationType(null);
       }
       default -> throw unsupported("duration type " + durationType);
