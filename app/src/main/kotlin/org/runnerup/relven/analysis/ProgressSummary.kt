@@ -32,6 +32,7 @@ private fun summarizeWindow(
   var duration = 0L
   var distance = 0.0
   var distanceSessionCount = 0
+  var distanceOverflowed = false
   val cutoff = nowMillis - windowMillis
   rows.asSequence()
       .filter { it.id.isNotBlank() && it.startedAtMillis > 0 && it.startedAtMillis in cutoff..nowMillis }
@@ -43,16 +44,21 @@ private fun summarizeWindow(
         duration =
             if (duration > Long.MAX_VALUE - durationSeconds) Long.MAX_VALUE
             else duration + durationSeconds
-        row.distanceMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let { meters ->
+        row.distanceMeters?.takeIf { it.isFinite() && it > 0.0 }?.let { meters ->
+          distanceSessionCount += 1
           val nextDistance = distance + meters
           if (nextDistance.isFinite()) {
             distance = nextDistance
-            distanceSessionCount += 1
+          } else {
+            distanceOverflowed = true
           }
         }
       }
   return ActivityWindowSummary(
-      count, duration, distance.takeIf { distanceSessionCount > 0 }, distanceSessionCount)
+      count,
+      duration,
+      distance.takeIf { distanceSessionCount > 0 && !distanceOverflowed },
+      distanceSessionCount)
 }
 
 private const val DAY_MILLIS = 24 * 60 * 60 * 1000L

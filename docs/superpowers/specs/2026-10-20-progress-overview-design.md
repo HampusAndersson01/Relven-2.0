@@ -18,7 +18,7 @@ Add an offline Progress destination to the Relven home shell that summarizes rec
 
 - Read non-deleted rows from RunnerUp's local activity database on `Dispatchers.IO`.
 - Count a row only when its recorded start is valid and falls in the inclusive rolling window, its ID has not already been counted, and its recorded duration is non-negative.
-- Sum distance only from finite, non-negative recorded distance values. Never substitute sync time or inferred distance.
+- Sum distance only from finite, positive recorded distance values. Zero, negative, and non-finite values do not count as distance coverage. If a finite total overflows, retain the count of rows with recorded distance and show that the total is unavailable. Never substitute sync time or inferred distance.
 - Use rolling 7×24-hour and 28×24-hour cutoffs ending at the captured current time.
 - Keep aggregation pure and deterministic for tests.
 

@@ -22,7 +22,7 @@
 
 - Include an activity exactly on the rolling cutoff and exclude one just before it.
 - Count duplicate database IDs once.
-- Skip malformed timestamps and negative durations; skip invalid distances without hiding otherwise valid time records.
+- Skip malformed timestamps and negative durations; skip invalid or zero distances without hiding otherwise valid time records. If the summed distance overflows, retain coverage count and mark the total unavailable.
 - Distinguish 7-day from 28-day windows and render an empty result accurately.
 - Surface database errors with an actionable retry.
 
@@ -57,7 +57,7 @@
 
 - [x] Run app unit tests, latest debug/release builds, debug/release lint, Spotless, and `git diff --check`; all passed with no new lint findings.
 - [x] Verify release APK metadata with `aapt dump badging`: `se.hampusandersson.relven`, versionCode `24000374`.
-- [ ] Request independent review and fix actionable findings.
+- [x] Request independent review and fix actionable findings; review cleared the stale-result race, zero-distance coverage, and overflow handling.
 - [ ] Commit and open one PR after checking the fork has no open PRs.
 - [ ] Wait for hosted CI, merge only when green, and verify merge SHA and empty PR queue.
 - [ ] Record actual results in implementation status and feature parity.

@@ -344,6 +344,7 @@
   <string name="Progress_duration_minutes">%1$d min %2$d sek registrerad tid</string>
   <string name="Progress_duration_seconds">%1$d sek registrerad tid</string>
   <string name="Progress_distance">%1$s km från %2$d pass med sparad sträcka</string>
+  <string name="Progress_distance_total_unavailable">Sträckans totalsumma är inte tillgänglig för %1$d pass med sparad sträcka.</string>
   <string name="Progress_load_title">Träningsbelastning</string>
   <string name="Progress_load_unavailable">Inte tillgänglig förrän en validerad modell och dess underlag finns.</string>
   <string name="Exercise_catalog_title">Övningar</string>

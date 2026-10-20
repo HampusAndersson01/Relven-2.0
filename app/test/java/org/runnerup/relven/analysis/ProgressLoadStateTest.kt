@@ -21,4 +21,15 @@ class ProgressLoadStateTest {
   fun failureIsUnavailable() {
     assertEquals(ProgressLoadState.Unavailable, progressLoadState(Result.failure(IllegalStateException())))
   }
+
+  @Test
+  fun onlyLatestProgressRequestCanCommit() {
+    val requests = ProgressRequestVersion()
+
+    val resumeRequest = requests.begin()
+    val retryRequest = requests.begin()
+
+    assertEquals(false, requests.isCurrent(resumeRequest))
+    assertEquals(true, requests.isCurrent(retryRequest))
+  }
 }

@@ -72,6 +72,7 @@ import org.runnerup.workout.RelvenPlanStore
 import org.runnerup.view.MainLayout
 import org.runnerup.relven.exercise.ExerciseCatalogRepository
 import org.runnerup.relven.analysis.ProgressLoadState
+import org.runnerup.relven.analysis.ProgressRequestVersion
 import org.runnerup.relven.analysis.ProgressSummary
 import org.runnerup.relven.analysis.RecordedActivity
 import org.runnerup.relven.analysis.ActivityWindowSummary
@@ -89,6 +90,7 @@ class RelvenHomeActivity : ComponentActivity() {
 
   private var recentActivity by mutableStateOf<RecentActivity?>(null)
   private var progressState by mutableStateOf<ProgressLoadState>(ProgressLoadState.Loading)
+  private val progressRequests = ProgressRequestVersion()
   private var sessionStatus by mutableStateOf<HomeSessionStatus?>(null)
   private var todayPlan by mutableStateOf<TodayPlanState>(TodayPlanState.Loading)
   private var activePlanState by mutableStateOf<ActivePlanLoadState>(ActivePlanLoadState.Loading)
@@ -192,8 +194,9 @@ class RelvenHomeActivity : ComponentActivity() {
     planRevisionStatus = PlanRevisionStatus.Idle
     currentTimeMillis = System.currentTimeMillis()
     progressState = ProgressLoadState.Loading
+    val progressRequest = progressRequests.begin()
+    val progressAsOfMillis = currentTimeMillis
     lifecycleScope.launch {
-      val progressAsOfMillis = currentTimeMillis
       val homeData =
           withContext(Dispatchers.IO) {
             val planState = loadActivePlan()
@@ -239,7 +242,9 @@ class RelvenHomeActivity : ComponentActivity() {
       activePlanState = homeData.activePlan
       completedStrengthSessions = homeData.completedStrengthSessions
       exerciseProgressionState = homeData.exerciseProgressionState
-      progressState = progressLoadState(homeData.progressSummary)
+      if (progressRequests.isCurrent(progressRequest)) {
+        progressState = progressLoadState(homeData.progressSummary)
+      }
       strengthSession = homeData.inProgressStrengthSession
       todayPlan =
           when (val planState = homeData.activePlan) {
@@ -398,6 +403,7 @@ class RelvenHomeActivity : ComponentActivity() {
   }
 
   private fun loadProgress() {
+    val progressRequest = progressRequests.begin()
     progressState = ProgressLoadState.Loading
     val nowMillis = System.currentTimeMillis()
     currentTimeMillis = nowMillis
@@ -406,7 +412,9 @@ class RelvenHomeActivity : ComponentActivity() {
       result.exceptionOrNull()?.let { error ->
         Log.w("RelvenHome", "Could not load activity progress", error)
       }
-      progressState = progressLoadState(result)
+      if (progressRequests.isCurrent(progressRequest)) {
+        progressState = progressLoadState(result)
+      }
     }
   }
 
@@ -961,7 +969,8 @@ private fun ProgressWindowCard(title: String, summary: ActivityWindowSummary) {
                     (summary.durationSeconds % 3600) / 60)
           }
       Text(durationLabel, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-      summary.distanceMeters?.let { distance ->
+      val distance = summary.distanceMeters
+      if (distance != null) {
         val distanceText =
             remember(locale, distance) {
               NumberFormat.getNumberInstance(locale).format(distance / 1000.0)
@@ -970,6 +979,12 @@ private fun ProgressWindowCard(title: String, summary: ActivityWindowSummary) {
             stringResource(
                 org.runnerup.common.R.string.Progress_distance,
                 distanceText,
+                summary.distanceSessionCount),
+            color = RelvenColors.MutedText)
+      } else if (summary.distanceSessionCount > 0) {
+        Text(
+            stringResource(
+                org.runnerup.common.R.string.Progress_distance_total_unavailable,
                 summary.distanceSessionCount),
             color = RelvenColors.MutedText)
       }

@@ -74,6 +74,29 @@ class ProgressSummaryTest {
     assertEquals(ActivityWindowSummary(0, 0, null, 0), summary.twentyEightDays)
   }
 
+  @Test
+  fun zeroDistanceDoesNotCountAsARecordedDistance() {
+    val summary = summarizeActivities(listOf(activity("zero", nowMillis, 60, 0.0)), nowMillis)
+
+    assertEquals(1, summary.sevenDays.sessionCount)
+    assertEquals(60, summary.sevenDays.durationSeconds)
+    assertNull(summary.sevenDays.distanceMeters)
+    assertEquals(0, summary.sevenDays.distanceSessionCount)
+  }
+
+  @Test
+  fun distanceOverflowKeepsCoverageCountButHidesInvalidTotal() {
+    val summary =
+        summarizeActivities(
+            listOf(
+                activity("large-1", nowMillis, 60, Double.MAX_VALUE),
+                activity("large-2", nowMillis, 60, Double.MAX_VALUE)),
+            nowMillis)
+
+    assertNull(summary.sevenDays.distanceMeters)
+    assertEquals(2, summary.sevenDays.distanceSessionCount)
+  }
+
   private fun activity(
       id: String,
       startedAtMillis: Long,
