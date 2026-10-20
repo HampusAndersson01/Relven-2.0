@@ -215,17 +215,17 @@ public class WearHRProvider implements HRProvider {
   }
 
   private void startWatchService() {
+    Handler handler = hrClientHandler;
+    if (handler != null) {
+      handler.removeCallbacks(connectionTimeout);
+      handler.postDelayed(connectionTimeout, CONNECTION_TIMEOUT_MILLIS);
+    }
     Wearable.getMessageClient(context)
         .sendMessage(connectedNodeId, Constants.Wear.Path.MSG_CMD_HR_START, new byte[0])
         .addOnSuccessListener(
             ignored -> {
               // Delivery confirms only that the command reached the watch, not that the sensor
               // restarted. Wait for another valid measurement before reporting recovery.
-              Handler handler = hrClientHandler;
-              if (connectionState.isConnecting() && handler != null) {
-                handler.removeCallbacks(connectionTimeout);
-                handler.postDelayed(connectionTimeout, CONNECTION_TIMEOUT_MILLIS);
-              }
             })
         .addOnFailureListener(
             error -> {

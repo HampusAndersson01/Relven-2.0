@@ -157,7 +157,6 @@ public class WearHRProviderRecoveryTest {
 
       nowMillis.set(16_001);
       delayedCallbacks.get(delayedCallbacks.size() - 1).run();
-      sendSuccessCallbacks.get(1).onSuccess(1);
       Runnable recoveryTimeout = delayedCallbacks.get(delayedCallbacks.size() - 1);
       nowMillis.set(46_002);
       recoveryTimeout.run();
