@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
+import java.util.TimeZone
 import org.runnerup.workout.RelvenPlanImporter
 import org.runnerup.relven.strength.CompletedStrengthSession
 import org.runnerup.relven.strength.StrengthSession
@@ -250,25 +251,31 @@ class PlanCalendarStateTest {
 
   @Test
   fun weekLabelsUseSwedishDateOrderAndIncludeBothMonths() {
-    val swedishWeek =
-        planCalendarState(
-            plan,
-            "2026-10",
-            "2026-10-21",
-            1_792_449_000_000L,
-            Locale.forLanguageTag("sv-SE"),
-            viewMode = PlanCalendarViewMode.Week)
-    val crossMonthWeek =
-        planCalendarState(
-            plan,
-            "2026-11",
-            "2026-10-28",
-            1_792_449_000_000L,
-            Locale.ENGLISH,
-            viewMode = PlanCalendarViewMode.Week)
+    val originalTimeZone = TimeZone.getDefault()
+    try {
+      TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+      val swedishWeek =
+          planCalendarState(
+              plan,
+              "2026-10",
+              "2026-10-21",
+              1_792_449_000_000L,
+              Locale.forLanguageTag("sv-SE"),
+              viewMode = PlanCalendarViewMode.Week)
+      val crossMonthWeek =
+          planCalendarState(
+              plan,
+              "2026-11",
+              "2026-10-28",
+              1_792_449_000_000L,
+              Locale.ENGLISH,
+              viewMode = PlanCalendarViewMode.Week)
 
-    assertEquals("19–25 oktober 2026", swedishWeek.periodLabel)
-    assertEquals("October 26 – November 1, 2026", crossMonthWeek.periodLabel)
+      assertEquals("19–25 oktober 2026", swedishWeek.periodLabel)
+      assertEquals("October 26 – November 1, 2026", crossMonthWeek.periodLabel)
+    } finally {
+      TimeZone.setDefault(originalTimeZone)
+    }
   }
 
   private fun calendarState(

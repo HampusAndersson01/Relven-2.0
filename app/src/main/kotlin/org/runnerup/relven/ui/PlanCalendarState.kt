@@ -200,6 +200,7 @@ private fun formatWeekLabel(
   val firstYear = firstDate.get(Calendar.YEAR)
   val lastYear = lastDate.get(Calendar.YEAR)
   val monthFormatter = SimpleDateFormat("MMMM", locale)
+  monthFormatter.timeZone = timezone
   val firstMonth = monthFormatter.format(firstDate.time)
   val lastMonth = monthFormatter.format(lastDate.time)
   return if (locale.language == "sv") {
