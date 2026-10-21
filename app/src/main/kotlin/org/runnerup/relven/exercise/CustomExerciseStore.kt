@@ -313,20 +313,30 @@ internal class CustomExerciseStore(
   }
 
   private fun JSONObject.validateCollectionRecordTypes() {
-    requireExactString("exerciseId")
+    requireCanonicalString("exerciseId")
     requireExactInt("revision")
     require(opt("archived") is Boolean) { "Exercise collection archive state must be boolean" }
-    requireExactString("nameEnglish")
-    requireExactString("nameSwedish")
-    requireExactString("category")
-    requireExactString("movementPattern")
+    requireCanonicalString("nameEnglish")
+    requireCanonicalString("nameSwedish")
+    requireCanonicalString("category")
+    requireCanonicalString("movementPattern")
     listOf("muscleGroups", "equipment", "instructionsEnglish", "instructionsSwedish").forEach { key ->
       val array = opt(key) as? JSONArray
           ?: throw IllegalArgumentException("Exercise collection $key must be an array")
       require((0 until array.length()).all { array.opt(it) is String }) {
         "Exercise collection $key must contain only strings"
       }
+      require((0 until array.length()).all { index ->
+        val value = array.getString(index)
+        value == value.trim()
+      }) { "Exercise collection $key must not contain surrounding whitespace" }
     }
+  }
+
+  private fun JSONObject.requireCanonicalString(key: String): String {
+    val value = requireExactString(key)
+    require(value == value.trim()) { "Exercise collection $key must not contain surrounding whitespace" }
+    return value
   }
 
   private fun JSONObject.requireExactString(key: String): String =

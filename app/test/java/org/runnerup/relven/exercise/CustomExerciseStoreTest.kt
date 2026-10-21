@@ -278,6 +278,21 @@ class CustomExerciseStoreTest {
   }
 
   @Test
+  fun collectionRejectsPaddedTextInsteadOfSilentlyNormalizingIt() {
+    val record = recordFrom(validInput(), "00000000-0000-0000-0000-000000000008")
+    val paddedName = JSONObject(record.toString()).put("nameEnglish", " Wall sit ")
+    val paddedEquipment = JSONObject(record.toString()).put("equipment", JSONArray().put(" wall "))
+    val paddedInstruction = JSONObject(record.toString())
+        .put("instructionsEnglish", JSONArray().put(" Lean against a wall. "))
+
+    assertIllegalArgument { store.importCollection(collection(paddedName), emptySet()) }
+    assertIllegalArgument { store.importCollection(collection(paddedEquipment), emptySet()) }
+    assertIllegalArgument { store.importCollection(collection(paddedInstruction), emptySet()) }
+
+    assertFalse(file.exists())
+  }
+
+  @Test
   fun importCapacityOverflowRejectsWithoutChangingExistingRecords() {
     repeat(200) { index ->
       store.create(validInput().copy(nameEnglish = "Exercise $index", nameSwedish = "Övning $index"))

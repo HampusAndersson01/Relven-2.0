@@ -22,6 +22,7 @@
 ## Review Focus
 
 - Duplicate IDs within an import must reject before writes.
+- Imported text with surrounding whitespace must reject rather than being silently trimmed during storage.
 - A conflict late in the input must leave the complete pre-import file unchanged.
 - IDs matching bundled exercises must reject.
 - Oversized payloads and capacity overflow must reject without truncation.
@@ -39,6 +40,7 @@
 - [x] Run the focused Robolectric test and confirm it fails because the API is absent.
 - [x] Implement strict schema parsing and validate all input and merged records before calling the existing atomic writer once.
 - [x] Run the focused tests and confirm they pass.
+- [x] Add a regression test for padded imported names, equipment, and instructions; reject those values before writing.
 
 ### Task 2: Repository and document-picker UI
 

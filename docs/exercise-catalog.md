@@ -12,4 +12,4 @@ Users can export only their custom exercises to a UTF-8 JSON collection (`relven
 
 Imports are limited to 1 MiB and 200 records, and the merged custom catalog remains limited to 200 records. New IDs are added; exact existing records are ignored; duplicate IDs in the file, IDs colliding with the bundled library, or any changed record with an existing ID reject the complete import before the atomic write. Import never deletes local exercises. The Android document picker reports successful additions, an already-present collection, or a failure that leaves current records unchanged.
 
-The JSON Schema describes field types and bounds. Runtime validation also rejects whitespace-only required text, case-insensitive duplicate equipment entries, and duplicate exercise IDs even when their records differ.
+The JSON Schema describes field types and bounds. Runtime validation also rejects whitespace-only required text, surrounding whitespace in imported text (so import never silently normalizes a collection), case-insensitive duplicate equipment entries, and duplicate exercise IDs even when their records differ.
