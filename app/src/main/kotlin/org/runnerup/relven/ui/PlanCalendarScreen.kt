@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -628,7 +629,8 @@ private fun CalendarViewModeSelector(
       PlanCalendarViewMode.Week to R.string.Plan_calendar_view_week,
       PlanCalendarViewMode.Month to R.string.Plan_calendar_view_month)
   Row(
-      modifier = Modifier.fillMaxWidth().background(RelvenColors.Surface, RoundedCornerShape(16.dp)).padding(4.dp),
+      modifier = Modifier.fillMaxWidth().background(RelvenColors.Surface, RoundedCornerShape(16.dp)).padding(4.dp)
+          .selectableGroup(),
       horizontalArrangement = Arrangement.spacedBy(4.dp)) {
     modes.forEach { (mode, label) ->
       val isSelected = mode == selectedMode
