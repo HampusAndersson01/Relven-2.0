@@ -189,6 +189,88 @@ class PlanCalendarStateTest {
         calendarDateEmphasis(selectedToday.copy(isToday = false, isSelected = false)))
   }
 
+  @Test
+  fun weekViewUsesMondayFirstSelectedDateRangeAndKeepsScheduledEntries() {
+    val state =
+        planCalendarState(
+            plan,
+            "2026-10",
+            "2026-10-21",
+            1_792_449_000_000L,
+            Locale.ENGLISH,
+            viewMode = PlanCalendarViewMode.Week)
+
+    assertEquals(PlanCalendarViewMode.Week, state.viewMode)
+    assertEquals(listOf("2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"), state.days.map { it.date })
+    assertEquals("October 19–25, 2026", state.periodLabel)
+    assertEquals("october-rest", (state.selectedEntries.single() as PlanCalendarEntry.Rest).sessionId)
+  }
+
+  @Test
+  fun dayViewContainsOnlySelectedPlanLocalDate() {
+    val state =
+        planCalendarState(
+            plan,
+            "2026-10",
+            "2026-10-20",
+            1_792_449_000_000L,
+            Locale.ENGLISH,
+            viewMode = PlanCalendarViewMode.Day)
+
+    assertEquals(listOf("2026-10-20"), state.days.map { it.date })
+    assertEquals("Tuesday 20 October 2026", state.periodLabel)
+    assertEquals("october-run", (state.selectedEntries.single() as PlanCalendarEntry.Workout).sessionId)
+    assertTrue(state.days.single().isToday)
+  }
+
+  @Test
+  fun shiftsSelectedDateByCalendarDayWeekAndMonthAcrossBoundaries() {
+    assertEquals("2027-01-01", shiftPlanCalendarDate("2026-12-31", PlanCalendarViewMode.Day, 1, "Europe/Stockholm"))
+    assertEquals("2027-01-04", shiftPlanCalendarDate("2026-12-28", PlanCalendarViewMode.Week, 1, "Europe/Stockholm"))
+    assertEquals("2026-02-28", shiftPlanCalendarDate("2026-01-31", PlanCalendarViewMode.Month, 1, "Europe/Stockholm"))
+    assertEquals("2026-01-24", shiftPlanCalendarDate("2026-01-31", PlanCalendarViewMode.Week, -1, "Europe/Stockholm"))
+    assertEquals("2026-03-29", shiftPlanCalendarDate("2026-03-28", PlanCalendarViewMode.Day, 1, "Europe/Stockholm"))
+  }
+
+  @Test
+  fun weekLabelIncludesBothYearsWhenTheWeekCrossesNewYear() {
+    val state =
+        planCalendarState(
+            plan,
+            "2027-01",
+            "2027-01-01",
+            1_792_449_000_000L,
+            Locale.ENGLISH,
+            viewMode = PlanCalendarViewMode.Week)
+
+    assertEquals("December 28, 2026 – January 3, 2027", state.periodLabel)
+    assertEquals("2026-12-28", state.days.first().date)
+    assertEquals("2027-01-03", state.days.last().date)
+  }
+
+  @Test
+  fun weekLabelsUseSwedishDateOrderAndIncludeBothMonths() {
+    val swedishWeek =
+        planCalendarState(
+            plan,
+            "2026-10",
+            "2026-10-21",
+            1_792_449_000_000L,
+            Locale.forLanguageTag("sv-SE"),
+            viewMode = PlanCalendarViewMode.Week)
+    val crossMonthWeek =
+        planCalendarState(
+            plan,
+            "2026-11",
+            "2026-10-28",
+            1_792_449_000_000L,
+            Locale.ENGLISH,
+            viewMode = PlanCalendarViewMode.Week)
+
+    assertEquals("19–25 oktober 2026", swedishWeek.periodLabel)
+    assertEquals("October 26 – November 1, 2026", crossMonthWeek.periodLabel)
+  }
+
   private fun calendarState(
       plan: RelvenPlanImporter.Plan,
       month: String,
