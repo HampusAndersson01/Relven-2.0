@@ -57,7 +57,9 @@ import org.runnerup.R
 internal fun PlanCreationScreen(
     busy: Boolean,
     errorMessage: String?,
+    activationPending: Boolean,
     onBack: () -> Unit,
+    onRetryActivation: () -> Unit,
     onDraftChanged: () -> Unit,
     onCreate: (String, String, Int, List<PlanDraftSession>) -> Unit) {
   val context = LocalContext.current
@@ -112,6 +114,7 @@ internal fun PlanCreationScreen(
     OutlinedTextField(
         value = name,
         onValueChange = { name = it.take(120); validationMessage = null; markDraftChanged() },
+        enabled = !busy && !activationPending,
         modifier = Modifier.fillMaxWidth(),
         label = { Text(stringResource(R.string.plan_create_name)) },
         singleLine = true,
@@ -152,6 +155,7 @@ internal fun PlanCreationScreen(
               markDraftChanged()
             },
             modifier = Modifier.fillMaxWidth(),
+            enabled = !busy && !activationPending,
             label = { Text(stringResource(R.string.plan_create_duration)) },
             suffix = { Text(stringResource(R.string.plan_create_weeks_suffix)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -179,7 +183,7 @@ internal fun PlanCreationScreen(
                     contentDescription = weekdayNames[index]
                     selected = type != null
                   }.clickable(
-                      enabled = !busy,
+                      enabled = !busy && !activationPending,
                       role = Role.Checkbox,
                       onClick = {
                         days = if (type == null) days + (dayOfWeek to PlanWorkoutType.Easy)
@@ -213,7 +217,7 @@ internal fun PlanCreationScreen(
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, if (selected) RelvenColors.Orange else ColorBorder),
                         modifier = Modifier.weight(1f).semantics { this.selected = selected }.clickable(
-                            enabled = !busy,
+                            enabled = !busy && !activationPending,
                             role = Role.RadioButton,
                             onClick = {
                               days = days + (dayOfWeek to option)
@@ -257,7 +261,15 @@ internal fun PlanCreationScreen(
           color = MaterialTheme.colorScheme.error,
           fontSize = 14.sp)
     }
-    Button(
+    if (activationPending) {
+      Button(
+          onClick = onRetryActivation,
+          enabled = !busy,
+          colors = ButtonDefaults.buttonColors(containerColor = RelvenColors.Orange),
+          modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) {
+        Text(stringResource(if (busy) R.string.plan_create_saving else R.string.plan_create_retry_activation))
+      }
+    } else Button(
         onClick = {
           validationMessage = when {
             !validName -> nameError

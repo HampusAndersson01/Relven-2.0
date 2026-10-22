@@ -54,6 +54,8 @@
     <string name="plan_create_days_error">Choose at least one training day.</string>
     <string name="plan_create_save">Create and open calendar</string>
     <string name="plan_create_save_error">Could not save the plan. Your entries are still here; try again.</string>
+    <string name="plan_create_activation_error">The plan is saved, but could not be activated. Retry activation; the saved plan will not be duplicated.</string>
+    <string name="plan_create_retry_activation">Retry activation</string>
     <string name="plan_create_saving">Creating plan…</string>
     <string name="plan_create_discard_title">Discard changes?</string>
     <string name="plan_create_discard_message">Your plan details have not been saved.</string>

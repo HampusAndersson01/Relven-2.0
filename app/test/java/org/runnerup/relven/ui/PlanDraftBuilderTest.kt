@@ -3,6 +3,7 @@ package org.runnerup.relven.ui
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.util.Calendar
 import org.runnerup.workout.RelvenPlanImporter
 
 class PlanDraftBuilderTest {
@@ -67,6 +68,18 @@ class PlanDraftBuilderTest {
         timezone = "Europe/Stockholm"))
 
     assertEquals(listOf("2026-12-29", "2027-01-05"), plan.days().map { it.date() }.sorted())
+  }
+
+  @Test
+  fun scheduleKeepsLocalWeekdaysAcrossDaylightSavingTransition() {
+    val plan = RelvenPlanImporter.parse(PlanDraftBuilder.create(
+        name = "DST plan",
+        startDate = "2026-03-23",
+        weeks = 2,
+        sessions = listOf(PlanDraftSession(Calendar.MONDAY, PlanWorkoutType.Easy)),
+        timezone = "Europe/Stockholm"))
+
+    assertEquals(listOf("2026-03-23", "2026-03-30"), plan.days().map { it.date() }.sorted())
   }
 
   @Test
