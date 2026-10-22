@@ -63,6 +63,7 @@ internal fun PlanLibraryScreen(
     busy: Boolean,
     onRetry: () -> Unit,
     onImport: () -> Unit,
+    onCreatePlan: () -> Unit,
     onCreateWithAi: () -> Unit,
     onActivate: (RelvenPlanImporter.Plan) -> Unit,
     onClearActive: () -> Unit,
@@ -83,6 +84,14 @@ internal fun PlanLibraryScreen(
       Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.plan_library_title), fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text(stringResource(R.string.plan_library_subtitle), color = RelvenColors.MutedText, fontSize = 15.sp)
+      }
+    }
+    item {
+      Button(
+          onClick = onCreatePlan, enabled = !busy,
+          colors = ButtonDefaults.buttonColors(containerColor = RelvenColors.Orange),
+          modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) {
+        Text(stringResource(R.string.plan_create_title))
       }
     }
     item {
