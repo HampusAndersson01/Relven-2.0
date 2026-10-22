@@ -54,7 +54,7 @@
     <string name="plan_create_days_error">Välj minst en träningsdag.</string>
     <string name="plan_create_save">Skapa och öppna kalendern</string>
     <string name="plan_create_save_error">Det gick inte att spara planen. Dina uppgifter finns kvar. Försök igen.</string>
-    <string name="plan_create_activation_error">Planen har sparats men kunde inte aktiveras. Försök igen; den sparade planen dupliceras inte.</string>
+    <string name="plan_create_activation_error">Planen kunde inte färdigställas. Försök igen så sparas och aktiveras den utan att dupliceras.</string>
     <string name="plan_create_retry_activation">Försök aktivera igen</string>
     <string name="plan_create_saving">Skapar planen…</string>
     <string name="plan_create_discard_title">Kasta ändringarna?</string>

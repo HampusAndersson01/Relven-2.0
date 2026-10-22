@@ -39,9 +39,11 @@
 - [x] Use an accessible Android date picker; provide field-level validation and a concise schedule preview before save.
 - [x] Save only after validation, activate the successfully saved plan, refresh state, then open the existing Plan calendar.
 - [x] Keep draft values on persistence errors, show saving feedback, and require confirmation before discarding edits.
+- [x] Persist the exact pending package before saving, make retries idempotent, and expose retry in the Plan library after interruption or activation failure.
+- [x] Keep submitted form values locked while pending; preserve discard confirmation if generation or durable pending-state persistence fails.
 
 ### Task 3: Verification and integration
 
 - [x] Run focused tests, full app unit tests, `:app:assembleLatestDebug`, `:app:lintLatestRelease`, `:spotlessCheck`, and `git diff --check`.
-- [ ] Review the final diff for accidental edits to user data, package identity, schema semantics and localization.
+- [x] Review the final diff for accidental edits to user data, package identity, schema semantics and localization.
 - [ ] Create exactly one PR from the current branch; wait for independent review and hosted Android/F-Droid CI; merge before starting another PR.

@@ -6,7 +6,7 @@ Let a user create a useful running plan entirely inside Relven, save it to the e
 
 ## Design
 
-Add a localized Compose plan builder reachable from the Plan library. The first builder supports a plan name, start date, duration of 1–16 weeks, selected training weekdays, and a workout type for each selected weekday (easy, interval, or long run). The builder creates valid schema-v1 plan JSON with stable generated workout/session IDs, one immutable running workout document per selected type, and dated sessions repeated on the chosen weekdays. The save action validates through `RelvenPlanStore.parse`, saves, activates, refreshes Today and the plan library, and opens the existing day/week/month calendar.
+Add a localized Compose plan builder reachable from the Plan library. The first builder supports a plan name, start date, duration of 1–16 weeks, selected training weekdays, and a workout type for each selected weekday (easy, interval, or long run). The builder creates valid schema-v1 plan JSON with stable generated workout/session IDs, one immutable running workout document per selected type, and dated sessions repeated on the chosen weekdays. The save action validates through `RelvenPlanStore.parse`, saves, activates, refreshes Today and the plan library, and opens the existing day/week/month calendar. The exact generated package is persisted as a pending operation before saving starts; if save or activation is interrupted, retry safely saves only if the same ID and content are not already stored, then activates that package. The Plan library exposes pending retry and prevents starting another in-app plan until recovery completes.
 
 The empty library calendar remains a real Monday-first calendar grid and gains a clear “Create plan” entry point. The current AI Plan Kit and JSON import remain available as advanced alternatives. Existing imported plans and schema-v2 revisions are never rewritten. RunnerUp remains the workout execution and activity-history authority.
 
@@ -24,4 +24,4 @@ Strength workout authoring, editing existing workout definitions, recurring avai
 
 ## Verification
 
-Unit tests validate generated JSON for each workout type, selected weekdays, week boundaries, leap/month/year transitions, and invalid input. Compose/activity tests cover validation, successful save/activation/navigation, and recoverable persistence errors. Run the full app test suite, Latest debug build, release lint, and Spotless; hosted Android/F-Droid CI must pass before merge. No ADB or emulator.
+Unit tests validate generated JSON for each workout type, selected weekdays, week boundaries, leap/month/year/DST transitions, invalid input, and exact-ID/source save/reuse/conflict decisions. Run the full app test suite, Latest debug build, release lint, and Spotless; hosted Android/F-Droid CI must pass before merge. No ADB or emulator.

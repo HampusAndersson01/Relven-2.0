@@ -15,6 +15,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.content.edit
 import androidx.core.os.ConfigurationCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -114,6 +115,8 @@ class RelvenHomeActivity : FragmentActivity() {
     private const val HOME_DESTINATION_STATE = "relven.home.destination"
     private const val PLAN_LIBRARY_OPEN_STATE = "relven.home.plan_library_open"
     private const val HISTORY_ACTIVITY_DETAIL_STATE = "relven.home.history_activity_detail"
+    private const val PENDING_PLAN_ACTIVATION_PREFERENCES = "relven.pending-plan-activation"
+    private const val PENDING_PLAN_ACTIVATION_KEY = "source_json"
   }
 
   private var recentActivity by mutableStateOf<RecentActivity?>(null)
@@ -181,8 +184,14 @@ class RelvenHomeActivity : FragmentActivity() {
     }
     destination = homeDestinationFromSaved(savedInstanceState?.getString(HOME_DESTINATION_STATE))
     planLibraryOpen = savedInstanceState?.getBoolean(PLAN_LIBRARY_OPEN_STATE) ?: false
-    planCreationOpen = savedInstanceState?.getBoolean("relven.home.plan_creation_open") ?: false
     pendingPlanActivationJson = savedInstanceState?.getString("relven.home.pending_plan_activation")
+        ?: getSharedPreferences(PENDING_PLAN_ACTIVATION_PREFERENCES, MODE_PRIVATE)
+            .getString(PENDING_PLAN_ACTIVATION_KEY, null)
+    planCreationOpen = savedInstanceState?.getBoolean("relven.home.plan_creation_open")
+        ?: (pendingPlanActivationJson != null)
+    if (pendingPlanActivationJson != null) {
+      planCreationError = getString(R.string.plan_create_activation_error)
+    }
     activityDetailId =
         savedInstanceState?.takeIf { it.containsKey(HISTORY_ACTIVITY_DETAIL_STATE) }
             ?.getLong(HISTORY_ACTIVITY_DETAIL_STATE)
@@ -557,51 +566,28 @@ class RelvenHomeActivity : FragmentActivity() {
       startDate: String,
       weeks: Int,
       sessions: List<PlanDraftSession>) {
+    val source = runCatching {
+      PlanDraftBuilder.create(
+          name = name,
+          startDate = startDate,
+          weeks = weeks,
+          sessions = sessions,
+          timezone = java.util.TimeZone.getDefault().id,
+          workoutCopy = localizedPlanWorkoutCopy())
+    }.getOrElse { error ->
+      Log.w("RelvenHome", "Could not create plan", error)
+      planCreationError = getString(R.string.plan_create_save_error)
+      return
+    }
+    if (!storePendingPlanActivation(source)) {
+      planCreationError = getString(R.string.plan_create_save_error)
+      return
+    }
+    planCreationOpen = true
     planLibraryBusy = true
     planCreationError = null
-    val workoutCopy = localizedPlanWorkoutCopy()
     lifecycleScope.launch {
-      val saveResult = withContext(Dispatchers.IO) {
-        runCatching {
-          val source = PlanDraftBuilder.create(
-              name = name,
-              startDate = startDate,
-              weeks = weeks,
-              sessions = sessions,
-              timezone = java.util.TimeZone.getDefault().id,
-              workoutCopy = workoutCopy)
-          RelvenPlanStore.parse(applicationContext, source).also {
-            RelvenPlanStore.save(applicationContext, it)
-          }
-        }
-      }
-      saveResult.fold(
-          onSuccess = { plan ->
-            val activation = withContext(Dispatchers.IO) {
-              runCatching { RelvenPlanStore.activate(applicationContext, plan) }
-            }
-            planLibraryBusy = false
-            if (activation.isSuccess) {
-              pendingPlanActivationJson = null
-              planCreationOpen = false
-              planLibraryOpen = false
-            } else {
-              pendingPlanActivationJson = plan.sourceJson()
-              planCreationOpen = true
-              planCreationError = getString(R.string.plan_create_activation_error)
-            }
-            loadPlanLibrary()
-            refreshActivePlan()
-            if (activation.isFailure) {
-              Log.w("RelvenHome", "Plan saved but could not be activated", activation.exceptionOrNull())
-            }
-          },
-          onFailure = { error ->
-            Log.w("RelvenHome", "Could not create plan", error)
-            planLibraryBusy = false
-            planCreationError = getString(R.string.plan_create_save_error)
-            loadPlanLibrary()
-          })
+      finishPendingPlanActivation(source)
     }
   }
 
@@ -609,27 +595,52 @@ class RelvenHomeActivity : FragmentActivity() {
     val sourceJson = pendingPlanActivationJson ?: return
     planLibraryBusy = true
     planCreationError = null
-    lifecycleScope.launch {
-      val result = withContext(Dispatchers.IO) {
-        runCatching {
-          val plan = RelvenPlanImporter.parse(sourceJson)
-          RelvenPlanStore.activate(applicationContext, plan)
+    lifecycleScope.launch { finishPendingPlanActivation(sourceJson) }
+  }
+
+  // Persist before saving so a process death during the save can recover the exact plan.
+  @Suppress("ApplySharedPref", "UseKtx")
+  private fun storePendingPlanActivation(sourceJson: String): Boolean {
+    val stored = getSharedPreferences(PENDING_PLAN_ACTIVATION_PREFERENCES, MODE_PRIVATE)
+        .edit()
+        .putString(PENDING_PLAN_ACTIVATION_KEY, sourceJson)
+        .commit()
+    if (stored) pendingPlanActivationJson = sourceJson
+    return stored
+  }
+
+  private suspend fun finishPendingPlanActivation(sourceJson: String) {
+    val result = withContext(Dispatchers.IO) {
+      runCatching {
+        val parsed = RelvenPlanStore.parse(applicationContext, sourceJson)
+        val stored = RelvenPlanStore.list(applicationContext).firstOrNull { it.id() == parsed.id() }
+        val plan = when (pendingPlanSaveAction(
+            parsed.id(), parsed.sourceJson(), stored?.id(), stored?.sourceJson())) {
+          PendingPlanSaveAction.Save -> parsed.also { RelvenPlanStore.save(applicationContext, it) }
+          PendingPlanSaveAction.Reuse -> requireNotNull(stored)
+          PendingPlanSaveAction.Conflict -> throw IOException("A different plan already uses this identifier")
         }
+        RelvenPlanStore.activate(applicationContext, plan)
       }
-      planLibraryBusy = false
-      result.fold(
-          onSuccess = {
-            pendingPlanActivationJson = null
-            planCreationOpen = false
-            planLibraryOpen = false
-            loadPlanLibrary()
-            refreshActivePlan()
-          },
-          onFailure = { error ->
-            Log.w("RelvenHome", "Could not activate saved plan", error)
-            planCreationError = getString(R.string.plan_create_activation_error)
-          })
     }
+    planLibraryBusy = false
+    result.fold(
+        onSuccess = {
+          getSharedPreferences(PENDING_PLAN_ACTIVATION_PREFERENCES, MODE_PRIVATE).edit {
+            remove(PENDING_PLAN_ACTIVATION_KEY)
+          }
+          pendingPlanActivationJson = null
+          planCreationOpen = false
+          planLibraryOpen = false
+          loadPlanLibrary()
+          refreshActivePlan()
+        },
+        onFailure = { error ->
+          Log.w("RelvenHome", "Could not save and activate plan", error)
+          planCreationOpen = true
+          planCreationError = getString(R.string.plan_create_activation_error)
+          loadPlanLibrary()
+        })
   }
 
   private fun localizedPlanWorkoutCopy(): Map<PlanWorkoutType, PlanWorkoutCopy> {
@@ -1526,6 +1537,8 @@ private fun RelvenHome(
             onImport = onImportPlan,
             onCreatePlan = onOpenPlanCreator,
             onCreateWithAi = onCreatePlanWithAi,
+            pendingActivation = planActivationPending,
+            onRetryPendingActivation = onRetryPlanActivation,
             onActivate = onActivatePlan,
             onClearActive = onClearActivePlan,
             onOpenCalendar = onOpenPlanCalendar)

@@ -79,7 +79,7 @@ internal fun PlanCreationScreen(
   var confirmDiscard by rememberSaveable { mutableStateOf(false) }
   val handleBack: () -> Unit = {
     if (!busy) {
-      if (dirty) confirmDiscard = true else onBack()
+      if (dirty && !activationPending) confirmDiscard = true else onBack()
     }
   }
   val markDraftChanged: () -> Unit = {
@@ -143,7 +143,7 @@ internal fun PlanCreationScreen(
                       calendar.get(Calendar.DAY_OF_MONTH))
                   .show()
             },
-            enabled = !busy,
+            enabled = !busy && !activationPending,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
           Text(displayDate)
         }
