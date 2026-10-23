@@ -12,6 +12,7 @@ class InitialRouteFitGateTest {
     assertFalse(gate.onStyleLoaded(routePointCount = 3))
     assertFalse(gate.onViewportChanged(width = 0, height = 224))
     assertTrue(gate.onViewportChanged(width = 360, height = 224))
+    gate.markFitIssued()
     assertFalse(gate.onViewportChanged(width = 360, height = 224))
   }
 
@@ -21,6 +22,21 @@ class InitialRouteFitGateTest {
 
     assertFalse(gate.onViewportChanged(width = 360, height = 224))
     assertTrue(gate.onStyleLoaded(routePointCount = 2))
+    gate.markFitIssued()
+    assertFalse(gate.onStyleLoaded(routePointCount = 2))
+  }
+
+  @Test
+  fun keepsFitPendingUntilCameraRequestIsIssued() {
+    val gate = InitialRouteFitGate()
+    gate.onStyleLoaded(routePointCount = 2)
+
+    assertTrue(gate.onViewportChanged(width = 360, height = 224))
+    assertTrue(gate.onViewportChanged(width = 360, height = 224))
+
+    gate.markFitIssued()
+
+    assertFalse(gate.onViewportChanged(width = 360, height = 224))
   }
 
   @Test

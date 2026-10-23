@@ -1,6 +1,6 @@
 package org.runnerup.relven.ui
 
-/** Waits for both the route style and a measured viewport before fitting a saved route once. */
+/** Waits for the route style and measured map viewport before issuing one saved-route fit. */
 internal class InitialRouteFitGate {
   private var styleReady = false
   private var viewportReady = false
@@ -18,9 +18,14 @@ internal class InitialRouteFitGate {
     return takeFitIfReady()
   }
 
-  private fun takeFitIfReady(): Boolean {
-    if (fitIssued || !styleReady || !viewportReady || !routeAvailable) return false
-    fitIssued = true
-    return true
+  fun markFitIssued() {
+    if (canFit()) fitIssued = true
   }
+
+  private fun takeFitIfReady(): Boolean {
+    return canFit()
+  }
+
+  private fun canFit(): Boolean =
+      !fitIssued && styleReady && viewportReady && routeAvailable
 }

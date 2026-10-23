@@ -2,7 +2,7 @@
 
 ## Running experience redesign — saved route first-layout fit (PR in progress)
 
-- Saved activity maps now defer the initial route fit until both the map style and a nonzero viewport are ready. This fixes a first-open race where the route could render outside the visible map until the user tapped **Fit route**. Unit tests cover style-first and viewport-first ordering, one-time fitting, and routes with fewer than two points.
+- Saved activity maps now defer the initial route fit until both the map style and the `MapView`'s nonzero measured viewport are ready. A fit stays pending until the camera request is issued, covering the first-layout race where the route could render outside the visible map until the user tapped **Fit route**. Unit tests cover style-first and viewport-first ordering, retry-before-issue, one-time fitting, and routes with fewer than two points.
 - Isolated emulator verification on `emulator-5586` at ADB port 5039: opening a saved 74 m route displays its orange geometry and finish marker without touching the recenter control. Capture: `app/build/outputs/qa/relven-pr111-review-initial-fit-final.png`. No physical ADB device was used.
 
 ## Running experience redesign — live route geometry (PR #110 merged)
