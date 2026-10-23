@@ -28,6 +28,7 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.database.sqlite.SQLiteDatabase;
 import android.location.Location;
@@ -51,6 +52,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.compose.ui.platform.ComposeView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -591,7 +593,11 @@ public class StartFragment extends Fragment implements TickListener, GpsInformat
       return;
     }
 
-    final CheckBox dontShowAgain = new CheckBox(context);
+    final CheckBox dontShowAgain =
+        new CheckBox(new ContextThemeWrapper(context, R.style.RelvenStartDialogTheme));
+    dontShowAgain.setTextColor(ContextCompat.getColor(context, android.R.color.white));
+    dontShowAgain.setButtonTintList(
+        ColorStateList.valueOf(ContextCompat.getColor(context, R.color.relven_orange)));
     dontShowAgain.setText(getResources().getText(org.runnerup.common.R.string.Do_not_show_again));
 
     new AlertDialog.Builder(context, R.style.RelvenStartDialogTheme)
