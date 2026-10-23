@@ -67,6 +67,7 @@ private class RelvenMapHost(
   private val sourceId = "relven-activity-route-source"
   private val markerSourceId = "relven-activity-route-markers"
   private val currentSourceId = "relven-active-location-marker"
+  private val initialRouteFitGate = InitialRouteFitGate()
   private var style: Style? = null
   private var mapInstance: org.maplibre.android.maps.MapLibreMap? = null
   private var currentMetric = metric
@@ -124,6 +125,9 @@ private class RelvenMapHost(
               mapWidthPx = view.width,
               leftClearancePx = dp(context, 120),
               marginPx = dp(context, 8))
+      if (initialRouteFitGate.onViewportChanged(view.width, view.height)) {
+        mapInstance?.let(::fitRoute)
+      }
     }
     mapView.addOnDidFailLoadingMapListener(failedLoadingListener)
     mapView.onCreate(null)
@@ -160,7 +164,8 @@ private class RelvenMapHost(
                 circleRadius(8.0f),
                 circleStrokeColor("#FFFFFF"),
                 circleStrokeWidth(2.0f)))
-        if (route.size >= 2) fitRoute(map) else currentLocation?.let(::centerOnRunner)
+        if (initialRouteFitGate.onStyleLoaded(route.size)) fitRoute(map)
+        else if (route.size < 2) currentLocation?.let(::centerOnRunner)
       }
     }
   }
