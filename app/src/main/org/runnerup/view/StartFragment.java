@@ -594,7 +594,7 @@ public class StartFragment extends Fragment implements TickListener, GpsInformat
     final CheckBox dontShowAgain = new CheckBox(context);
     dontShowAgain.setText(getResources().getText(org.runnerup.common.R.string.Do_not_show_again));
 
-    new AlertDialog.Builder(context)
+    new AlertDialog.Builder(context, R.style.RelvenStartDialogTheme)
         .setView(dontShowAgain)
         .setCancelable(false)
         .setTitle(org.runnerup.common.R.string.Warning)
@@ -772,7 +772,7 @@ public class StartFragment extends Fragment implements TickListener, GpsInformat
       WorkoutSerializer.writeFile(requireContext().getApplicationContext(), name, advancedWorkout);
       refreshWorkoutSetup();
     } catch (Exception ex) {
-      new AlertDialog.Builder(requireContext())
+      new AlertDialog.Builder(requireContext(), R.style.RelvenStartDialogTheme)
           .setTitle(org.runnerup.common.R.string.Failed_to_load_workout)
           .setMessage(ex.toString())
           .setPositiveButton(org.runnerup.common.R.string.OK, (dialog, which) -> dialog.dismiss())
@@ -905,7 +905,7 @@ public class StartFragment extends Fragment implements TickListener, GpsInformat
                     : getString(org.runnerup.common.R.string.GPS_permission_text_pre_Android10);
 
         AlertDialog.Builder builder =
-            new AlertDialog.Builder(ctx)
+            new AlertDialog.Builder(ctx, R.style.RelvenStartDialogTheme)
                 .setTitle(org.runnerup.common.R.string.GPS_permission_required)
                 .setNegativeButton(
                     org.runnerup.common.R.string.Cancel, (dialog, which) -> dialog.dismiss());
@@ -969,7 +969,7 @@ public class StartFragment extends Fragment implements TickListener, GpsInformat
         msgId = org.runnerup.common.R.string.Battery_optimization_check_text;
       }
 
-      new AlertDialog.Builder(ctx)
+      new AlertDialog.Builder(ctx, R.style.RelvenStartDialogTheme)
           .setTitle(org.runnerup.common.R.string.Battery_optimization_check)
           .setMessage(msgId)
           .setPositiveButton(
@@ -1401,7 +1401,7 @@ public class StartFragment extends Fragment implements TickListener, GpsInformat
       refreshWorkoutSetup();
     } catch (Exception ex) {
       ex.printStackTrace();
-      new AlertDialog.Builder(requireActivity())
+      new AlertDialog.Builder(requireActivity(), R.style.RelvenStartDialogTheme)
           .setTitle(getString(org.runnerup.common.R.string.Failed_to_load_workout))
           .setMessage(ex.toString())
           .setPositiveButton(org.runnerup.common.R.string.OK, (dialog, which) -> dialog.dismiss())
