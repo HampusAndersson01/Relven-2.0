@@ -79,6 +79,12 @@ object WorkoutSetupInput {
   fun isPositive(value: String): Boolean =
     value.trim().replace(',', '.').toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true
 
-  fun isTime(value: String): Boolean =
-    value.matches(Regex("(?:[0-9]{1,2}:)?[0-5]?[0-9]:[0-5][0-9]"))
+  fun isTime(value: String): Boolean {
+    if (!value.matches(Regex("(?:[0-9]{1,2}:)?[0-5]?[0-9]:[0-5][0-9]"))) return false
+    val seconds = value.split(':').map(String::toLong)
+    val totalSeconds =
+      if (seconds.size == 3) seconds[0] * 3600 + seconds[1] * 60 + seconds[2]
+      else seconds[0] * 60 + seconds[1]
+    return totalSeconds > 0
+  }
 }

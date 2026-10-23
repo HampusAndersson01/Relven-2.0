@@ -60,6 +60,8 @@ class WorkoutSetupPresentationTest {
     assertFalse(WorkoutSetupInput.isPositive("distance"))
     assertTrue(WorkoutSetupInput.isTime("00:04:00"))
     assertTrue(WorkoutSetupInput.isTime("4:00"))
+    assertFalse(WorkoutSetupInput.isTime("00:00:00"))
+    assertFalse(WorkoutSetupInput.isTime("00:00"))
     assertFalse(WorkoutSetupInput.isTime("00:71:00"))
     assertFalse(WorkoutSetupInput.isTime("not a time"))
   }

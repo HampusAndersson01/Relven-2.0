@@ -43,6 +43,21 @@ public class BasicWorkoutGoalTest {
   }
 
   @Test
+  public void zeroTimeGoalFallsBackToSafeDefaultInsteadOfAnUnboundedWorkout() {
+    preferences
+        .edit()
+        .putString("basic_goal_type", "time")
+        .putString("basic_goal_time", "00:00:00")
+        .putInt(context.getString(R.string.pref_basic_target_type), -1)
+        .commit();
+
+    Step activeStep = createBasicWorkout().steps.get(0);
+
+    assertEquals(Dimension.TIME, activeStep.getDurationType());
+    assertEquals(30 * 60.0, activeStep.getDurationValue(), 0.0);
+  }
+
+  @Test
   public void distanceGoalUsesThePreferredDistanceUnit() {
     preferences
         .edit()
