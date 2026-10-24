@@ -24,7 +24,9 @@ import android.view.ViewGroup;
 import androidx.compose.ui.platform.ComposeView;
 import org.runnerup.wear.ui.WearConnectWaitingComposeContent;
 
-/** Relven-styled waiting surface; phone and tracker connection state remain owned by MainActivity. */
+/**
+ * Relven-styled waiting surface; phone and tracker connection state remain owned by MainActivity.
+ */
 public final class ConnectToPhoneFragment extends Fragment {
 
   private ComposeView composeView;
