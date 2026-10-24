@@ -18,8 +18,10 @@ import java.time.Instant
 
 internal enum class HealthConnectActivity {
   Running,
+  TreadmillRunning,
   Walking,
   Cycling,
+  StationaryCycling,
   Strength,
   Other
 }
@@ -174,7 +176,10 @@ internal fun mapWorkoutForHealthConnect(
 
   // Health Connect's StepsCadenceRecord is specifically steps/minute. Relven's cycling cadence
   // represents pedal revolutions, so it must not be exported as step cadence.
-  if (capabilities.cadence && workout.activity in setOf(HealthConnectActivity.Running, HealthConnectActivity.Walking)) {
+  if (capabilities.cadence && workout.activity in setOf(
+          HealthConnectActivity.Running,
+          HealthConnectActivity.TreadmillRunning,
+          HealthConnectActivity.Walking)) {
     val samples = routeSamples.mapNotNull { sample ->
       val cadence = sample.cadencePerMinute?.takeIf { it.isFinite() && it in 1.0..10_000.0 }
           ?: return@mapNotNull null
@@ -196,8 +201,10 @@ internal fun mapWorkoutForHealthConnect(
 
 private fun HealthConnectActivity.toHealthConnectExerciseType(): Int = when (this) {
   HealthConnectActivity.Running -> ExerciseSessionRecord.EXERCISE_TYPE_RUNNING
+  HealthConnectActivity.TreadmillRunning -> ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL
   HealthConnectActivity.Walking -> ExerciseSessionRecord.EXERCISE_TYPE_WALKING
   HealthConnectActivity.Cycling -> ExerciseSessionRecord.EXERCISE_TYPE_BIKING
+  HealthConnectActivity.StationaryCycling -> ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY
   HealthConnectActivity.Strength -> ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING
   HealthConnectActivity.Other -> ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
 }

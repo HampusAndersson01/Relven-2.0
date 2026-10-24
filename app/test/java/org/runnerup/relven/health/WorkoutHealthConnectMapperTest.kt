@@ -59,8 +59,10 @@ class WorkoutHealthConnectMapperTest {
   fun mapsActivityTypesToTheirClosestHealthConnectCategories() {
     val cases = listOf(
         HealthConnectActivity.Running to ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
+        HealthConnectActivity.TreadmillRunning to ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL,
         HealthConnectActivity.Walking to ExerciseSessionRecord.EXERCISE_TYPE_WALKING,
         HealthConnectActivity.Cycling to ExerciseSessionRecord.EXERCISE_TYPE_BIKING,
+        HealthConnectActivity.StationaryCycling to ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY,
         HealthConnectActivity.Strength to ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
         HealthConnectActivity.Other to ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT)
 

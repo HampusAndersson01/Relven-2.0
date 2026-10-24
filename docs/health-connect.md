@@ -28,8 +28,9 @@ unavailable on API 24 and 25; workout recording remains available.
 | `SpeedRecord` | Speed samples attached to recorded route points | Omitted unless at least two positive finite measured samples exist. |
 | `StepsCadenceRecord` | Cadence samples attached to recorded route points | Omitted unless a positive finite recorded sample exists. Uses Health Connect's `WRITE_STEPS` permission for steps cadence. Aggregate cadence is never expanded into samples. |
 
-Current exercise mappings are running/treadmill → running, walking → walking, biking/stationary
-bike → biking, gym → strength training, and other/orienteering → other workout. `ExerciseLap`
+Current exercise mappings are running → running, treadmill → treadmill running, walking → walking,
+biking → biking, stationary bike → stationary biking, gym → strength training, and
+other/orienteering → other workout. `ExerciseLap`
 mapping accepts only explicit timestamped lap bounds contained within the session and omits
 overlapping intervals. The database lap summary stores duration and distance without wall-clock
 bounds; those summaries alone are not sufficient to create laps. The application integration must
