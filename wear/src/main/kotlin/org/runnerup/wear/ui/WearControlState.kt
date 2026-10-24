@@ -46,6 +46,9 @@ class WearControlPresentationState {
   internal var finishConfirmationRequested by mutableStateOf(false)
     private set
 
+  internal var skipSupported by mutableStateOf(false)
+    private set
+
   fun updateStartState(state: TrackerState?) {
     startMode = wearStartMode(state)
   }
@@ -53,6 +56,10 @@ class WearControlPresentationState {
   fun updatePauseAction(state: TrackerState?) {
     pauseAction = wearPauseAction(state)
     if (pauseAction == WearPauseAction.DISABLED) finishConfirmationRequested = false
+  }
+
+  fun updateSkipSupport(supported: Boolean) {
+    skipSupported = supported
   }
 
   fun requestFinish() {

@@ -36,6 +36,9 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   private var restoreSelectedWorkout = false
   private var trackerStartIssued = false
   private var sessionCommandReceiverRegistered = false
+  private var finishAfterCancel = false
+  private var finishAfterStartResolution = false
+  private var restoredStartCommand: org.runnerup.common.wear.WorkoutSessionProtocol.Command? = null
   private val sessionCommandReceiver =
       object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -46,19 +49,69 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
               } catch (_: java.io.IOException) {
                 return
               }
-          if (!isScheduledWatchStartForSession(command, state.value.sessionId)) return
+          if (command.sessionId != state.value.sessionId) return
+          if (Constants.Intents.WORKOUT_SESSION_COMMAND_REJECTED == intent.action) {
+            if (command.actor != org.runnerup.common.wear.WorkoutSessionProtocol.Actor.PHONE &&
+                command.actor != org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) return
+            handleRejectedSessionCommand(command)
+            return
+          }
+          if (command.actor != org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) return
           if (tracker?.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
           val activeTracker = tracker ?: return
+          if (command.action == org.runnerup.common.wear.WorkoutSessionProtocol.Action.CANCEL) {
+            val applied = activeTracker.applyWearSessionCommand(command)
+            if ((applied == org.runnerup.common.wear.WorkoutSessionProtocol.Result.ACCEPTED ||
+                    applied == org.runnerup.common.wear.WorkoutSessionProtocol.Result.DUPLICATE) &&
+                state.acceptAuthoritativeCancel(command)) {
+              val shouldFinish = finishAfterCancel
+              countdownHandler.removeCallbacksAndMessages(null)
+              finishAfterCancel = false
+              if (shouldFinish) {
+                WearConnectionProvider.cancelWorkoutPreparation(this@WorkoutPreparationActivity, state.value.sessionId)
+                finish()
+              }
+            }
+            return
+          }
+          if (!isScheduledWatchStartForSession(command, state.value.sessionId)) return
           val applied = activeTracker.applyWearSessionCommand(command)
           if (applied == org.runnerup.common.wear.WorkoutSessionProtocol.Result.ACCEPTED ||
               applied == org.runnerup.common.wear.WorkoutSessionProtocol.Result.DUPLICATE) {
             if (!state.acceptAuthoritativeStart(command)) return
+            countdownHandler.removeCallbacks(watchStartRequestTimeout)
             countdownHandler.removeCallbacks(countdownTick)
-            countdownHandler.post(countdownTick)
+            if (finishAfterStartResolution) {
+              finishAfterStartResolution = false
+              finishAfterCancel = true
+              cancelCountdown("Avbryter passet")
+            } else {
+              countdownHandler.post(countdownTick)
+            }
           }
         }
       }
   private val countdownHandler = Handler(Looper.getMainLooper())
+  private val watchStartRequestTimeout: Runnable =
+      object : Runnable {
+        override fun run() {
+          if (state.value.phase == WorkoutPreparationPhase.START_REQUESTED) {
+            state.onStartRequestStillPending("Klockan svarar inte · försöker igen")
+            state.lastCommand?.let { tracker?.requestWearSessionCommand(it) }
+            countdownHandler.postDelayed(this, CANCEL_RETRY_INTERVAL_MS)
+          }
+        }
+      }
+  private val watchCancelRequestTimeout: Runnable =
+      object : Runnable {
+        override fun run() {
+          if (state.value.phase == WorkoutPreparationPhase.CANCEL_REQUESTED) {
+            state.onCancelRequestStillPending("Klockan svarar inte · väntar på bekräftelse")
+            state.lastCommand?.let { tracker?.requestWearSessionCommand(it) }
+            countdownHandler.postDelayed(this, CANCEL_RETRY_INTERVAL_MS)
+          }
+        }
+      }
   private val countdownTick = object : Runnable {
     override fun run() {
       if (isFinishing || isDestroyed || state.value.phase != WorkoutPreparationPhase.COUNTDOWN) return
@@ -70,13 +123,17 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
       }
       if (trackerStartIssued) return
       val activeTracker = tracker
-      if (activeTracker == null || activeTracker.state != TrackerState.CONNECTED) {
+      if (activeTracker == null || !selectedWorkoutAvailable) {
         cancelCountdown("Anslutningen till passmotorn försvann")
         return
       }
       trackerStartIssued = true
       try {
-        activeTracker.start()
+        if (!activeTracker.startIfConnected()) {
+          trackerStartIssued = false
+          cancelCountdown("Anslutningen till passmotorn försvann")
+          return
+        }
         if (!state.completeStart(SystemClock.elapsedRealtime())) {
           // Tracker started only after the absolute deadline; state transition is still monotonic.
           state.completeStart(state.value.plannedStartElapsedRealtimeMs)
@@ -113,6 +170,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
             if (state.value.phase != WorkoutPreparationPhase.PREPARING) {
               activeTracker.prepareWearWorkoutSession(
                   state.value.sessionId, state.value.watchReady)
+              restoreCountdownIfNeeded()
             }
           }
           updateTrackerState()
@@ -148,6 +206,14 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
       return
     }
     state = WorkoutPreparationStateHolder(sessionId, workoutName, upcomingStep)
+    restoredStartCommand =
+        savedInstanceState?.getByteArray(STATE_ACCEPTED_START)?.let { bytes ->
+          try {
+            org.runnerup.common.wear.WorkoutSessionProtocol.decodeCommand(bytes)
+          } catch (_: java.io.IOException) {
+            null
+          }
+        }
     restoreSelectedWorkout = savedInstanceState != null
     selectedWorkoutAvailable = !restoreSelectedWorkout
     setContent {
@@ -169,7 +235,10 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
     ContextCompat.registerReceiver(
         this,
         sessionCommandReceiver,
-        IntentFilter(Constants.Intents.WORKOUT_SESSION_COMMAND),
+        IntentFilter().apply {
+          addAction(Constants.Intents.WORKOUT_SESSION_COMMAND)
+          addAction(Constants.Intents.WORKOUT_SESSION_COMMAND_REJECTED)
+        },
         ContextCompat.RECEIVER_NOT_EXPORTED)
     sessionCommandReceiverRegistered = true
     prepareWatch()
@@ -185,7 +254,9 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         sessionId,
         state.value.workoutName,
         state.value.upcomingStep,
-        workoutJson) { result ->
+        workoutJson,
+        intent.getIntExtra(EXTRA_WORKOUT_TYPE, Constants.WORKOUT_TYPE.BASIC) !=
+            Constants.WORKOUT_TYPE.BASIC) { result ->
           if (isFinishing || isDestroyed) return@prepareWorkout
           val ready = result.status == PreparationStatus.PREPARED
           val status =
@@ -202,6 +273,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
               }
           state.onWatchPreparationFinished(ready, status)
           tracker?.prepareWearWorkoutSession(sessionId, ready)
+          restoreCountdownIfNeeded()
         }
   }
 
@@ -213,23 +285,114 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
     val activeTracker = tracker ?: return
     if (activeTracker.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
     activeTracker.prepareWearWorkoutSession(state.value.sessionId, state.value.watchReady)
+    if (state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
+      val request = state.createStartRequest(SystemClock.elapsedRealtime()) ?: return
+      if (!state.markStartRequested(request)) return
+      if (!activeTracker.requestWearSessionCommand(request)) {
+        state.onStartRequestFailed("Klockan kunde inte nås · försök igen")
+        return
+      }
+      countdownHandler.removeCallbacks(watchStartRequestTimeout)
+      countdownHandler.postDelayed(watchStartRequestTimeout, START_REQUEST_TIMEOUT_MS)
+      return
+    }
     val command = state.createStartCommand(SystemClock.elapsedRealtime()) ?: return
     val result = activeTracker.applyWearSessionCommand(command)
     if (result == org.runnerup.common.wear.WorkoutSessionProtocol.Result.REJECTED) return
     if (!state.acceptAuthoritativeStart(command)) return
+    beginAcceptedCountdown()
+  }
+
+  private fun restoreCountdownIfNeeded() {
+    val command = restoredStartCommand ?: tracker?.lastAcceptedWatchSessionCommand ?: return
+    if (!selectedWorkoutAvailable ||
+        state.value.phase != WorkoutPreparationPhase.READY ||
+        command.sessionId != state.value.sessionId ||
+        command.action != org.runnerup.common.wear.WorkoutSessionProtocol.Action.START ||
+        command.actor != state.authority) return
+    val result = tracker?.applyWearSessionCommand(command)
+    if (result == org.runnerup.common.wear.WorkoutSessionProtocol.Result.REJECTED || result == null) return
+    if (state.acceptAuthoritativeStart(command)) beginAcceptedCountdown()
+    restoredStartCommand = null
+  }
+
+  private fun beginAcceptedCountdown() {
     countdownHandler.removeCallbacks(countdownTick)
     countdownHandler.post(countdownTick)
   }
 
   private fun cancelPreparation() {
+    if (state.value.phase == WorkoutPreparationPhase.START_REQUESTED &&
+        state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
+      finishAfterStartResolution = true
+      state.onStartRequestStillPending("Väntar på klockan innan passet kan avbrytas")
+      state.lastCommand?.let { tracker?.requestWearSessionCommand(it) }
+      countdownHandler.removeCallbacks(watchStartRequestTimeout)
+      countdownHandler.postDelayed(watchStartRequestTimeout, CANCEL_RETRY_INTERVAL_MS)
+      return
+    }
+    if (state.value.phase == WorkoutPreparationPhase.COUNTDOWN &&
+        state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
+      finishAfterCancel = true
+      cancelCountdown("Passförberedelsen avbröts")
+      return
+    }
     cancelCountdown("Passförberedelsen avbröts")
     WearConnectionProvider.cancelWorkoutPreparation(this, state.value.sessionId)
     finish()
   }
 
   private fun cancelCountdown(status: String) {
-    val command = state.cancelCountdown(status) ?: return
-    tracker?.applyWearSessionCommand(command)
+    val command = state.cancelCountdown(status, SystemClock.elapsedRealtime()) ?: return
+    if (state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
+      countdownHandler.removeCallbacks(watchCancelRequestTimeout)
+      tracker?.holdWearSessionStart()
+      tracker?.requestWearSessionCommand(command)
+      countdownHandler.postDelayed(watchCancelRequestTimeout, CANCEL_RETRY_INTERVAL_MS)
+    } else {
+      tracker?.applyWearSessionCommand(command)
+    }
+  }
+
+  private fun handleRejectedSessionCommand(
+      command: org.runnerup.common.wear.WorkoutSessionProtocol.Command
+  ) {
+    val pending = state.lastCommand ?: return
+    if (pending.commandId != command.commandId ||
+        pending.action != command.action ||
+        pending.actor != command.actor) return
+    countdownHandler.removeCallbacks(watchStartRequestTimeout)
+    countdownHandler.removeCallbacks(watchCancelRequestTimeout)
+    val activeTracker = tracker
+    if (command.action == org.runnerup.common.wear.WorkoutSessionProtocol.Action.START) {
+      if (command.actor == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
+        state.resetAfterRejectedAuthoritativeStart("Passet kunde inte starta · försök igen")
+      } else if (state.value.phase == WorkoutPreparationPhase.START_REQUESTED) {
+        state.onStartRequestFailed("Klockan avböjde start · försök igen")
+      }
+      if (finishAfterStartResolution) {
+        finishAfterStartResolution = false
+        WearConnectionProvider.cancelWorkoutPreparation(this, state.value.sessionId)
+        finish()
+      }
+      return
+    }
+    if (command.action == org.runnerup.common.wear.WorkoutSessionProtocol.Action.CANCEL &&
+        state.value.phase == WorkoutPreparationPhase.CANCEL_REQUESTED) {
+      activeTracker?.releaseWearSessionStart()
+      if (activeTracker?.state == TrackerState.CONNECTED) {
+        finishAfterCancel = false
+        state.onCancelRequestFailed()
+        beginAcceptedCountdown()
+      } else if (activeTracker?.state == TrackerState.STARTED ||
+          activeTracker?.state == TrackerState.PAUSED) {
+        finishAfterCancel = false
+        WearConnectionProvider.cancelWorkoutPreparation(this, state.value.sessionId)
+        runActivityLauncher.launch(Intent(this, RunActivity::class.java))
+      } else {
+        state.onCancelRequestStillPending("Passets tillstånd ändrades · försök igen")
+      }
+    }
   }
 
   private fun restoreSelectedWorkoutFromIntent(activeTracker: Tracker): Boolean {
@@ -262,8 +425,26 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
     super.onDestroy()
   }
 
+  override fun onSaveInstanceState(outState: Bundle) {
+    if (::state.isInitialized && state.value.phase == WorkoutPreparationPhase.COUNTDOWN) {
+      state.lastCommand?.let { command ->
+        try {
+          outState.putByteArray(
+              STATE_ACCEPTED_START,
+              org.runnerup.common.wear.WorkoutSessionProtocol.encodeCommand(command))
+        } catch (_: java.io.IOException) {
+          // The session remains safe; restoring an invalid command would be less safe than retrying.
+        }
+      }
+    }
+    super.onSaveInstanceState(outState)
+  }
+
   companion object {
     private const val COUNTDOWN_REFRESH_MS = 50L
+    private const val START_REQUEST_TIMEOUT_MS = 5_000L
+    private const val CANCEL_RETRY_INTERVAL_MS = 1_000L
+    private const val STATE_ACCEPTED_START = "org.runnerup.relven.preparation.accepted_start"
     private const val EXTRA_SESSION_ID = "org.runnerup.relven.preparation.session_id"
     private const val EXTRA_WORKOUT_NAME = "org.runnerup.relven.preparation.workout_name"
     private const val EXTRA_UPCOMING_STEP = "org.runnerup.relven.preparation.upcoming_step"

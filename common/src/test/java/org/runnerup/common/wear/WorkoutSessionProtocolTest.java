@@ -36,7 +36,25 @@ public class WorkoutSessionProtocolTest {
   }
 
   @Test
-  public void phoneProjectionPreservesTheAcceptedControlActionAndSequence() {
+  public void delayedStartProjectionIsRejectedAfterItsMonotonicDeadline() {
+    String sessionId = UUID.randomUUID().toString();
+    WorkoutSessionProtocol.Command start =
+        new WorkoutSessionProtocol.Command(
+            sessionId,
+            UUID.randomUUID().toString(),
+            1L,
+            WorkoutSessionProtocol.Actor.WATCH,
+            WorkoutSessionProtocol.Action.START,
+            10_000L,
+            13_000L);
+
+    assertTrue(WorkoutSessionProtocol.isStartDeadlineInFuture(start, 12_999L));
+    assertFalse(WorkoutSessionProtocol.isStartDeadlineInFuture(start, 13_000L));
+    assertFalse(WorkoutSessionProtocol.isStartDeadlineInFuture(start, 13_001L));
+  }
+
+  @Test
+  public void clockProjectionPreservesWatchAuthorityActionAndSequence() {
     String sessionId = UUID.randomUUID().toString();
     for (WorkoutSessionProtocol.Action action : WorkoutSessionProtocol.Action.values()) {
       WorkoutSessionProtocol.Command accepted =
@@ -44,18 +62,76 @@ public class WorkoutSessionProtocolTest {
               sessionId,
               UUID.randomUUID().toString(),
               9,
-              WorkoutSessionProtocol.Actor.PHONE,
+              WorkoutSessionProtocol.Actor.WATCH,
               action,
               10_000,
               action == WorkoutSessionProtocol.Action.START ? 13_000 : 0);
 
-      WorkoutSessionProtocol.Command projection = WorkoutSessionProtocol.phoneProjection(accepted);
+      WorkoutSessionProtocol.Command projection =
+          WorkoutSessionProtocol.rebaseCommandClock(accepted, 20_000, 23_000);
 
-      assertEquals(WorkoutSessionProtocol.Actor.PHONE, projection.getActor());
+      assertEquals(WorkoutSessionProtocol.Actor.WATCH, projection.getActor());
       assertEquals(action, projection.getAction());
       assertEquals(accepted.getSequence(), projection.getSequence());
       assertEquals(accepted.getCommandId(), projection.getCommandId());
+      assertEquals(20_000, projection.getIssuedAtElapsedRealtimeMs());
+      assertEquals(23_000, projection.getPlannedStartElapsedRealtimeMs());
     }
+  }
+
+  @Test
+  public void watchCanAcceptPhoneRequestsButPhoneCanOnlyApplyWatchProjections() {
+    String sessionId = UUID.randomUUID().toString();
+    WorkoutSessionProtocol.SessionState watchState =
+        WorkoutSessionProtocol.SessionState.ready(sessionId, WorkoutSessionProtocol.Actor.WATCH);
+    WorkoutSessionProtocol.Command phoneRequest =
+        new WorkoutSessionProtocol.Command(
+            sessionId,
+            UUID.randomUUID().toString(),
+            1,
+            WorkoutSessionProtocol.Actor.PHONE,
+            WorkoutSessionProtocol.Action.START,
+            1_000,
+            4_000);
+
+    WorkoutSessionProtocol.Transition accepted =
+        WorkoutSessionProtocol.applyAtAuthority(
+            watchState, WorkoutSessionProtocol.Actor.WATCH, phoneRequest);
+    assertEquals(WorkoutSessionProtocol.Result.ACCEPTED, accepted.getResult());
+    assertEquals(WorkoutSessionProtocol.Actor.WATCH, accepted.getState().getAuthority());
+    assertEquals(
+        WorkoutSessionProtocol.Result.REJECTED,
+        WorkoutSessionProtocol.applyAtAuthority(
+                watchState, WorkoutSessionProtocol.Actor.PHONE, phoneRequest)
+            .getResult());
+
+    WorkoutSessionProtocol.Command acceptedWatchEvent =
+        new WorkoutSessionProtocol.Command(
+            sessionId,
+            UUID.randomUUID().toString(),
+            2,
+            WorkoutSessionProtocol.Actor.WATCH,
+            WorkoutSessionProtocol.Action.PAUSE,
+            4_100,
+            0);
+    WorkoutSessionProtocol.SessionState activeState =
+        WorkoutSessionProtocol.advance(accepted.getState(), 4_000).getState();
+    assertEquals(
+        WorkoutSessionProtocol.Result.ACCEPTED,
+        WorkoutSessionProtocol.applyProjection(activeState, acceptedWatchEvent).getResult());
+    assertEquals(
+        WorkoutSessionProtocol.Result.REJECTED,
+        WorkoutSessionProtocol.applyProjection(
+                activeState,
+                new WorkoutSessionProtocol.Command(
+                    sessionId,
+                    UUID.randomUUID().toString(),
+                    2,
+                    WorkoutSessionProtocol.Actor.PHONE,
+                    WorkoutSessionProtocol.Action.PAUSE,
+                    4_100,
+                    0))
+            .getResult());
   }
 
   @Test

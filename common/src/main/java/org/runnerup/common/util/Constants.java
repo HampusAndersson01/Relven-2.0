@@ -207,6 +207,8 @@ public interface Constants {
     String RESUME_WORKOUT = BuildConfig.applicationIdFull + ".RESUME_WORKOUT";
     String STOP_WORKOUT = BuildConfig.applicationIdFull + ".STOP_WORKOUT";
     String WORKOUT_SESSION_COMMAND = BuildConfig.applicationIdFull + ".WORKOUT_SESSION_COMMAND";
+    String WORKOUT_SESSION_COMMAND_REJECTED =
+        BuildConfig.applicationIdFull + ".WORKOUT_SESSION_COMMAND_REJECTED";
     String EXTRA_WORKOUT_SESSION_COMMAND =
         BuildConfig.applicationIdFull + ".EXTRA_WORKOUT_SESSION_COMMAND";
 
@@ -274,6 +276,8 @@ public interface Constants {
       String MSG_WORKOUT_PREPARED = PREFIX + "/workout/prepared";
       String MSG_WORKOUT_CANCEL = PREFIX + "/workout/cancel";
       String MSG_WORKOUT_SESSION_COMMAND = PREFIX + "/workout/session/command";
+      String MSG_WORKOUT_SESSION_ACK = PREFIX + "/workout/session/ack";
+      String MSG_WORKOUT_SESSION_REJECT = PREFIX + "/workout/session/reject";
 
       /* Msg: pause/resume from wear to phone */
       String MSG_CMD_WORKOUT_PAUSE = PREFIX + "/workout/pause";

@@ -70,7 +70,9 @@ public class StartFragment extends Fragment
       WorkoutPreparationProtocol.PrepareMessage prepared =
           WorkoutPreparationProtocol.decodePrepare(payload);
       if (activity.getStateService() != null) {
-        activity.getStateService().setPreparedWorkoutSession(prepared.getSessionId());
+        activity
+            .getStateService()
+            .setPreparedWorkoutSession(prepared.getSessionId(), prepared.isSkipSupported());
       }
       WearControlsComposeContent.bindPreparedWorkout(
           composeView,

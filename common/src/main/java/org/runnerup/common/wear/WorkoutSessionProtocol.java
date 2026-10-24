@@ -9,9 +9,9 @@ import java.util.UUID;
 
 /** Versioned, bounded control envelope and reducer for one phone/watch workout session. */
 public final class WorkoutSessionProtocol {
-  public static final int CURRENT_VERSION = 1;
+  public static final int CURRENT_VERSION = 2;
   public static final int MAX_MESSAGE_BYTES = 256;
-  private static final int MAGIC = 0x52575331; // RWS1
+  private static final int MAGIC = 0x52575332; // RWS2
   private static final int COMMAND = 1;
   private static final long MAX_CLOCK_RTT_MS = 2_000;
 
@@ -30,6 +30,29 @@ public final class WorkoutSessionProtocol {
         acceptedCommand.getAction(),
         acceptedCommand.getIssuedAtElapsedRealtimeMs(),
         acceptedCommand.getPlannedStartElapsedRealtimeMs());
+  }
+
+  /** Rebases a committed authority command onto a recipient's elapsed-realtime clock. */
+  public static Command rebaseCommandClock(
+      Command committedCommand,
+      long projectedIssuedAtElapsedRealtimeMs,
+      long projectedPlannedStartElapsedRealtimeMs) {
+    if (committedCommand == null) throw new IllegalArgumentException("Command is required");
+    return new Command(
+        committedCommand.getSessionId(),
+        committedCommand.getCommandId(),
+        committedCommand.getSequence(),
+        committedCommand.getActor(),
+        committedCommand.getAction(),
+        projectedIssuedAtElapsedRealtimeMs,
+        projectedPlannedStartElapsedRealtimeMs);
+  }
+
+  /** A delayed start projection is stale once its shared monotonic deadline has passed. */
+  public static boolean isStartDeadlineInFuture(Command command, long nowElapsedRealtimeMs) {
+    return command != null
+        && command.getAction() == Action.START
+        && command.getPlannedStartElapsedRealtimeMs() > nowElapsedRealtimeMs;
   }
 
   public enum Actor {
@@ -362,6 +385,17 @@ public final class WorkoutSessionProtocol {
       SessionState state, Actor committingAuthority, Command command) {
     if (state == null || committingAuthority == null || state.authority != committingAuthority) {
       return rejected(state, "Wrong session authority");
+    }
+    return apply(state, command);
+  }
+
+  /** Applies an event projection only when it came from the mirror's declared authority. */
+  public static Transition applyProjection(SessionState state, Command command) {
+    if (state == null
+        || command == null
+        || state.getAuthority() != Actor.WATCH
+        || command.getActor() != state.getAuthority()) {
+      return rejected(state, "Projection did not come from the session authority");
     }
     return apply(state, command);
   }

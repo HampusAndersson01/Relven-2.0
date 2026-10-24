@@ -113,6 +113,8 @@ internal fun WorkoutPreparationScreen(
           text =
               when {
                 !selectedWorkoutAvailable -> "Passet kunde inte återställas"
+                state.phase == WorkoutPreparationPhase.START_REQUESTED -> "Väntar på klockan"
+                state.phase == WorkoutPreparationPhase.CANCEL_REQUESTED -> "Avbryter nedräkning"
                 state.phase == WorkoutPreparationPhase.COUNTDOWN -> "Startar om ${state.countdownValue}"
                 trackerReady -> "Starta pass · 3 sek nedräkning"
                 else -> "Förbereder träningsmotorn"
@@ -123,7 +125,10 @@ internal fun WorkoutPreparationScreen(
     }
     OutlinedButton(
         onClick = onCancel,
-        enabled = state.phase != WorkoutPreparationPhase.STARTING,
+        enabled =
+            state.phase != WorkoutPreparationPhase.STARTING &&
+                state.phase != WorkoutPreparationPhase.START_REQUESTED &&
+                state.phase != WorkoutPreparationPhase.CANCEL_REQUESTED,
         modifier = Modifier.fillMaxWidth().height(54.dp),
         shape = RoundedCornerShape(18.dp)) {
       Text("Avbryt", color = RelvenColors.MutedText)

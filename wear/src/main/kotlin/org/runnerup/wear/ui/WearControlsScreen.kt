@@ -62,6 +62,7 @@ object WearControlsComposeContent {
       view: ComposeView,
       state: WearControlPresentationState,
       lapClick: Runnable,
+      skipClick: Runnable,
       pauseResumeClick: Runnable,
       finishClick: Runnable
   ) {
@@ -69,6 +70,7 @@ object WearControlsComposeContent {
       WearPauseResumeScreen(
           state,
           onLap = { lapClick.run() },
+          onSkip = { skipClick.run() },
           onPauseResume = { pauseResumeClick.run() },
           onFinish = { finishClick.run() })
     }
@@ -156,6 +158,7 @@ internal fun WearStartScreen(mode: WearStartMode?, onStart: () -> Unit) {
 internal fun WearPauseResumeScreen(
     state: WearControlPresentationState,
     onLap: () -> Unit,
+    onSkip: () -> Unit,
     onPauseResume: () -> Unit,
     onFinish: () -> Unit
 ) {
@@ -184,6 +187,17 @@ internal fun WearPauseResumeScreen(
             icon = pauseResumeIcon,
             enabled = enabled,
             onClick = onPauseResume)
+      }
+      if (state.skipSupported) {
+        TextButton(
+            onClick = onSkip,
+            enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = "Hoppa över steg" }) {
+          Text(
+              stringResource(org.runnerup.common.R.string.Wear_skip_step),
+              fontSize = 10.sp,
+              fontWeight = FontWeight.SemiBold)
+        }
       }
       if (state.finishConfirmationRequested) {
         Text(
