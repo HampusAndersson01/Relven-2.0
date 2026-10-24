@@ -22,6 +22,8 @@ internal enum class HealthConnectActivity {
   Other
 }
 
+internal enum class HealthConnectSessionDisposition { Completed, Partial, Discarded, Unfinished }
+
 @RequiresApi(Build.VERSION_CODES.O)
 internal data class HealthConnectRouteSample(
     val time: Instant,
@@ -41,6 +43,7 @@ internal data class RecordedWorkoutForHealthConnect(
     val notes: String?,
     val startTime: Instant,
     val endTime: Instant?,
+    val disposition: HealthConnectSessionDisposition = HealthConnectSessionDisposition.Completed,
     val distanceMeters: Double? = null,
     val route: List<HealthConnectRouteSample> = emptyList())
 
@@ -57,6 +60,9 @@ internal fun mapWorkoutForHealthConnect(
     workout: RecordedWorkoutForHealthConnect,
     capabilities: HealthConnectWriteCapabilities = HealthConnectWriteCapabilities()): List<Record> {
   val endTime = workout.endTime ?: return emptyList()
+  if (workout.disposition !in setOf(
+          HealthConnectSessionDisposition.Completed,
+          HealthConnectSessionDisposition.Partial)) return emptyList()
   if (workout.sessionId.isBlank() || workout.version < 0 || endTime <= workout.startTime) return emptyList()
   if (!capabilities.exercise) return emptyList()
 

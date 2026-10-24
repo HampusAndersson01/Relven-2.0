@@ -102,6 +102,12 @@ class WorkoutHealthConnectMapperTest {
     assertTrue(mapWorkoutForHealthConnect(run(endTime = null)).isEmpty())
     assertTrue(mapWorkoutForHealthConnect(run(endTime = start)).isEmpty())
     assertTrue(mapWorkoutForHealthConnect(run(startTime = end, endTime = start)).isEmpty())
+    assertTrue(mapWorkoutForHealthConnect(
+        run().copy(disposition = HealthConnectSessionDisposition.Unfinished)).isEmpty())
+    assertTrue(mapWorkoutForHealthConnect(
+        run().copy(disposition = HealthConnectSessionDisposition.Discarded)).isEmpty())
+    assertEquals(1, mapWorkoutForHealthConnect(
+        run().copy(disposition = HealthConnectSessionDisposition.Partial)).size)
   }
 
   private fun run(

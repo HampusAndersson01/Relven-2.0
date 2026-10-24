@@ -21,7 +21,7 @@ unavailable on API 24 and 25; workout recording remains available.
 
 | Health Connect record | Relven source | Rules |
 | --- | --- | --- |
-| `ExerciseSessionRecord` | Completed session identity, sport, title, notes, actual start/end | No record for an unfinished session or invalid/non-positive interval. |
+| `ExerciseSessionRecord` | Completed or explicitly saved partial session identity, sport, title, notes, actual start/end | No record for an unfinished/discarded session or invalid/non-positive interval. |
 | `DistanceRecord` | Positive finite recorded total distance | Omitted if unavailable, zero, negative, or non-finite. |
 | `ExerciseRoute` on the session | Chronological recorded GPS points | Requires at least two valid points within the session interval. Invalid coordinates are omitted; duplicate timestamps are collapsed. Route permission is independent from session permission. |
 | `HeartRateRecord` | Heart-rate samples attached to recorded route points | Omitted unless at least one plausible measured sample exists. Session average/max are not converted into invented time-series samples. |
