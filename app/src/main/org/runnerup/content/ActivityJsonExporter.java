@@ -99,7 +99,7 @@ final class ActivityJsonExporter {
     try {
       while (lapCursor.moveToNext()) {
         JSONObject split = new JSONObject();
-        split.put("number", lapCursor.getInt(0) + 1);
+        split.put("number", Math.max(0, lapCursor.getInt(0)) + 1);
         putNonNegativeLong(split, "durationSeconds", lapCursor, 1);
         putPositiveDouble(split, "distanceMeters", lapCursor, 2);
         putPositiveInt(split, "averageHeartRateBpm", lapCursor, 3);

@@ -117,7 +117,7 @@ public class ActivityProviderShareStreamTest {
     long activityId = database.insertOrThrow(DB.ACTIVITY.TABLE, null, activity);
     ContentValues lap = new ContentValues();
     lap.put(DB.LAP.ACTIVITY, activityId);
-    lap.put(DB.LAP.LAP, 0);
+    lap.put(DB.LAP.LAP, -2);
     lap.put(DB.LAP.TIME, -3);
     lap.put(DB.LAP.PLANNED_TIME, -1);
     database.insertOrThrow(DB.LAP.TABLE, null, lap);
@@ -132,6 +132,7 @@ public class ActivityProviderShareStreamTest {
     JSONObject split = savedActivity.getJSONArray("splits").getJSONObject(0);
     assertFalse(split.has("durationSeconds"));
     assertFalse(split.has("planned"));
+    assertEquals(1, split.getInt("number"));
   }
 
   @Test
