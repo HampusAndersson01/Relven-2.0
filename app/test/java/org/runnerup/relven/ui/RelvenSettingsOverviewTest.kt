@@ -3,6 +3,7 @@ package org.runnerup.relven.ui
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -34,5 +35,25 @@ class RelvenSettingsOverviewTest {
     composeRule.onNodeWithText("Automatisk paus").performClick()
 
     composeRule.runOnIdle { assertTrue(requestedAutoPause == true) }
+  }
+
+  @Test
+  fun intervalAutoLapToggleRequestsEnabledValue() {
+    var requestedValue: Boolean? = null
+    composeRule.setContent {
+      RelvenSettingsOverview(
+          route = SettingsRoute.Page(SettingsPage.Workout),
+          onRouteChanged = {},
+          settings = RelvenSettingsSnapshot(false, true, false, false, false),
+          onKeepScreenOnChanged = {},
+          onAutoStartGpsChanged = {},
+          onAutoPauseChanged = {},
+          onAutoLapChanged = {},
+          onAutoLapIntervalsChanged = { requestedValue = it })
+    }
+
+    composeRule.onNodeWithText("Automatiska varv för intervallpass").performScrollTo().performClick()
+
+    composeRule.runOnIdle { assertTrue(requestedValue == true) }
   }
 }
