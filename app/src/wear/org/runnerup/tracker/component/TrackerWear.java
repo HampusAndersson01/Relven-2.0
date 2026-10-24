@@ -38,6 +38,7 @@ import java.util.List;
 import org.runnerup.common.tracker.TrackerState;
 import org.runnerup.common.util.Constants;
 import org.runnerup.common.util.ValueModel;
+import org.runnerup.common.wear.WorkoutSessionProtocol;
 import org.runnerup.tracker.Tracker;
 import org.runnerup.tracker.WorkoutObserver;
 import org.runnerup.util.Formatter;
@@ -67,6 +68,10 @@ public class TrackerWear extends DefaultTrackerComponent
   private WearableClient mWearableClient;
   private Formatter formatter;
   private String wearNode;
+  private String requestedSessionId;
+  private long lastSessionCommandSequence;
+  private boolean sessionStartAnnounced;
+  private WorkoutSessionProtocol.SessionState workoutSessionState;
 
   private final Handler handler = new Handler();
   private Bundle lastCreatedWorkoutEvent;
@@ -439,6 +444,14 @@ public class TrackerWear extends DefaultTrackerComponent
   @Override
   public void onMessageReceived(final MessageEvent messageEvent) {
     Log.d(getName(), "onMessageReceived: " + messageEvent);
+    if (Wear.Path.MSG_SESSION_CLOCK_REQUEST.contentEquals(messageEvent.getPath())) {
+      handleClockRequest(messageEvent);
+      return;
+    }
+    if (Wear.Path.MSG_WORKOUT_SESSION_COMMAND.contentEquals(messageEvent.getPath())) {
+      handleSessionCommand(messageEvent);
+      return;
+    }
     // note: skip state checking, do that in receiver instead
     if (Wear.Path.MSG_CMD_WORKOUT_PAUSE.contentEquals(messageEvent.getPath())) {
       sendBroadcast(Intents.PAUSE_WORKOUT);
@@ -446,10 +459,152 @@ public class TrackerWear extends DefaultTrackerComponent
       sendBroadcast(Intents.RESUME_WORKOUT);
     } else if (Wear.Path.MSG_CMD_WORKOUT_NEW_LAP.contentEquals(messageEvent.getPath())) {
       sendBroadcast(Intents.NEW_LAP);
+    } else if (Wear.Path.MSG_CMD_WORKOUT_FINISH.contentEquals(messageEvent.getPath())) {
+      sendBroadcast(Intents.STOP_WORKOUT);
     } else if (Wear.Path.MSG_CMD_WORKOUT_START.contentEquals(messageEvent.getPath())) {
       /* send broadcast to start the workout */
       sendBroadcast(Intents.START_WORKOUT);
     }
+  }
+
+  private void handleClockRequest(MessageEvent event) {
+    if (wearNode == null
+        || !wearNode.equals(event.getSourceNodeId())
+        || mGoogleApiClient == null
+        || !mGoogleApiClient.isConnected()) return;
+    long phoneReceivedAt = android.os.SystemClock.elapsedRealtime();
+    try {
+      org.runnerup.common.wear.WearClockSyncProtocol.Request request =
+          org.runnerup.common.wear.WearClockSyncProtocol.decodeRequest(event.getData());
+      long phoneSentAt = android.os.SystemClock.elapsedRealtime();
+      byte[] reply =
+          org.runnerup.common.wear.WearClockSyncProtocol.encodeReply(
+              request.getRequestId(),
+              request.getWatchSentAtElapsedRealtimeMs(),
+              phoneReceivedAt,
+              phoneSentAt);
+      Wearable.MessageApi.sendMessage(
+          mGoogleApiClient, event.getSourceNodeId(), Wear.Path.MSG_SESSION_CLOCK_REPLY, reply);
+    } catch (java.io.IOException malformed) {
+      Log.w(getName(), "Ignoring invalid clock synchronization request", malformed);
+    }
+  }
+
+  private void handleSessionCommand(MessageEvent event) {
+    if (wearNode == null || !wearNode.equals(event.getSourceNodeId())) {
+      Log.w(getName(), "Ignoring session command from an unverified watch node");
+      return;
+    }
+    final WorkoutSessionProtocol.Command command;
+    try {
+      command = WorkoutSessionProtocol.decodeCommand(event.getData());
+    } catch (java.io.IOException malformed) {
+      Log.w(getName(), "Ignoring malformed session command", malformed);
+      return;
+    }
+    if (command.getActor() != WorkoutSessionProtocol.Actor.WATCH) {
+      Log.w(getName(), "Ignoring stale or non-watch session command");
+      return;
+    }
+    if (command.getAction() == WorkoutSessionProtocol.Action.START) {
+      if (tracker.getState() != TrackerState.CONNECTED) {
+        Log.w(getName(), "Ignoring start request without the matching prepared session");
+        return;
+      }
+      if (workoutSessionState == null
+          || !workoutSessionState.getSessionId().equals(command.getSessionId())) {
+        Log.w(getName(), "Ignoring start request for a different prepared session");
+        return;
+      }
+      long phoneReceivedAt = android.os.SystemClock.elapsedRealtime();
+      long phoneSendAt = android.os.SystemClock.elapsedRealtime();
+      WorkoutSessionProtocol.Command scheduled =
+          new WorkoutSessionProtocol.Command(
+              command.getSessionId(),
+              command.getCommandId(),
+              command.getSequence(),
+              WorkoutSessionProtocol.Actor.WATCH,
+              WorkoutSessionProtocol.Action.START,
+              phoneReceivedAt,
+              phoneSendAt + 3_000L);
+      if (applySessionCommand(scheduled) != WorkoutSessionProtocol.Result.ACCEPTED) return;
+      requestedSessionId = command.getSessionId();
+      try {
+        WorkoutSessionProtocol.Command clockReply =
+            new WorkoutSessionProtocol.Command(
+                command.getSessionId(),
+                command.getCommandId(),
+                command.getSequence(),
+                WorkoutSessionProtocol.Actor.PHONE,
+                WorkoutSessionProtocol.Action.START,
+                phoneReceivedAt,
+                phoneSendAt);
+        Wearable.MessageApi.sendMessage(
+            mGoogleApiClient,
+            event.getSourceNodeId(),
+            Wear.Path.MSG_WORKOUT_SESSION_COMMAND,
+            WorkoutSessionProtocol.encodeCommand(clockReply));
+        Intent intent =
+            new Intent()
+                .setPackage(context.getPackageName())
+                .setAction(Constants.Intents.WORKOUT_SESSION_COMMAND)
+                .putExtra(
+                    Constants.Intents.EXTRA_WORKOUT_SESSION_COMMAND,
+                    WorkoutSessionProtocol.encodeCommand(scheduled));
+        context.sendBroadcast(intent);
+      } catch (java.io.IOException error) {
+        Log.w(getName(), "Unable to relay start request", error);
+      }
+      return;
+    }
+    if (requestedSessionId == null || !requestedSessionId.equals(command.getSessionId())) {
+      Log.w(getName(), "Ignoring session command for a different session");
+      return;
+    }
+    // Validate against the real Tracker state before advancing the protocol reducer.
+    // Otherwise a stale PAUSE/RESUME request could consume its sequence while doing no work.
+    switch (command.getAction()) {
+      case PAUSE:
+      case LAP:
+      case SKIP:
+        if (tracker.getState() != TrackerState.STARTED) return;
+        break;
+      case RESUME:
+        if (tracker.getState() != TrackerState.PAUSED) return;
+        break;
+      case FINISH:
+        if (tracker.getState() != TrackerState.STARTED && tracker.getState() != TrackerState.PAUSED)
+          return;
+        break;
+      default:
+        return;
+    }
+    WorkoutSessionProtocol.Result result = applySessionCommand(command);
+    if (result != WorkoutSessionProtocol.Result.ACCEPTED) return;
+    String action;
+    switch (command.getAction()) {
+      case PAUSE:
+        if (tracker.getState() != TrackerState.STARTED) return;
+        action = Constants.Intents.PAUSE_WORKOUT;
+        break;
+      case RESUME:
+        if (tracker.getState() != TrackerState.PAUSED) return;
+        action = Constants.Intents.RESUME_WORKOUT;
+        break;
+      case LAP:
+      case SKIP:
+        if (tracker.getState() != TrackerState.STARTED) return;
+        action = Constants.Intents.NEW_LAP;
+        break;
+      case FINISH:
+        if (tracker.getState() != TrackerState.STARTED && tracker.getState() != TrackerState.PAUSED)
+          return;
+        action = Constants.Intents.STOP_WORKOUT;
+        break;
+      default:
+        return;
+    }
+    sendBroadcast(action);
   }
 
   private void sendBroadcast(String action) {
@@ -459,6 +614,10 @@ public class TrackerWear extends DefaultTrackerComponent
 
   @Override
   public ResultCode onEnd(Callback callback, Context context) {
+    requestedSessionId = null;
+    lastSessionCommandSequence = 0L;
+    sessionStartAnnounced = false;
+    workoutSessionState = null;
     if (mGoogleApiClient != null) {
       if (mGoogleApiClient.isConnected()) {
         clearData(true);
@@ -513,6 +672,7 @@ public class TrackerWear extends DefaultTrackerComponent
       }
       if (!mWorkoutSenderRunning) workoutEventSender.run();
       else sendWorkoutEvent();
+      announceSessionStarted();
     } else if (ev.getType() == DataEvent.TYPE_DELETED) {
       wearNode = null;
     }
@@ -522,6 +682,135 @@ public class TrackerWear extends DefaultTrackerComponent
   public void onValueChanged(
       ValueModel<TrackerState> instance, TrackerState oldValue, TrackerState newValue) {
     setTrackerState(newValue);
+    reflectTrackerState(newValue);
+    if (newValue == TrackerState.STARTED) announceSessionStarted();
+  }
+
+  public void prepareWorkoutSession(String sessionId, boolean watchReady) {
+    if (sessionId == null || sessionId.isBlank()) return;
+    if (!sessionId.equals(requestedSessionId)) {
+      requestedSessionId = sessionId;
+      lastSessionCommandSequence = 0L;
+      sessionStartAnnounced = false;
+      workoutSessionState =
+          WorkoutSessionProtocol.SessionState.ready(sessionId, WorkoutSessionProtocol.Actor.PHONE);
+    }
+    if (tracker.getState() == TrackerState.STARTED) announceSessionStarted();
+  }
+
+  public void resetWorkoutSession(String sessionId, boolean watchReady) {
+    requestedSessionId = null;
+    workoutSessionState = null;
+    lastSessionCommandSequence = 0L;
+    sessionStartAnnounced = false;
+    prepareWorkoutSession(sessionId, watchReady);
+  }
+
+  public WorkoutSessionProtocol.Result applySessionCommand(WorkoutSessionProtocol.Command command) {
+    if (workoutSessionState == null
+        || command == null
+        || !workoutSessionState.getSessionId().equals(command.getSessionId())) {
+      return WorkoutSessionProtocol.Result.REJECTED;
+    }
+    WorkoutSessionProtocol.Transition transition =
+        WorkoutSessionProtocol.applyAtAuthority(
+            workoutSessionState, WorkoutSessionProtocol.Actor.PHONE, command);
+    if (transition.getResult() == WorkoutSessionProtocol.Result.ACCEPTED) {
+      workoutSessionState = transition.getState();
+      lastSessionCommandSequence = workoutSessionState.getLastSequence();
+      if (command.getActor() == WorkoutSessionProtocol.Actor.PHONE) {
+        publishPhoneSessionCommand(command);
+      }
+    }
+    return transition.getResult();
+  }
+
+  private void publishPhoneSessionCommand(WorkoutSessionProtocol.Command command) {
+    if (wearNode == null || mGoogleApiClient == null || !mGoogleApiClient.isConnected()) return;
+    try {
+      WorkoutSessionProtocol.Command projection =
+          new WorkoutSessionProtocol.Command(
+              command.getSessionId(),
+              command.getCommandId(),
+              command.getSequence(),
+              WorkoutSessionProtocol.Actor.PHONE,
+              WorkoutSessionProtocol.Action.START,
+              command.getIssuedAtElapsedRealtimeMs(),
+              command.getPlannedStartElapsedRealtimeMs());
+      Wearable.MessageApi.sendMessage(
+          mGoogleApiClient,
+          wearNode,
+          Wear.Path.MSG_WORKOUT_SESSION_COMMAND,
+          WorkoutSessionProtocol.encodeCommand(projection));
+    } catch (java.io.IOException error) {
+      Log.w(getName(), "Unable to project session countdown to watch", error);
+    }
+  }
+
+  private void reflectTrackerState(TrackerState trackerState) {
+    if (workoutSessionState == null) return;
+    if (trackerState == TrackerState.STARTED
+        && workoutSessionState.getPhase() == WorkoutSessionProtocol.Phase.COUNTDOWN) {
+      WorkoutSessionProtocol.Transition advanced =
+          WorkoutSessionProtocol.advance(
+              workoutSessionState, android.os.SystemClock.elapsedRealtime());
+      if (advanced.getResult() == WorkoutSessionProtocol.Result.ACCEPTED) {
+        workoutSessionState = advanced.getState();
+      }
+      return;
+    }
+    WorkoutSessionProtocol.Action action = null;
+    if (trackerState == TrackerState.PAUSED
+        && workoutSessionState.getPhase() == WorkoutSessionProtocol.Phase.ACTIVE) {
+      action = WorkoutSessionProtocol.Action.PAUSE;
+    } else if (trackerState == TrackerState.STARTED
+        && workoutSessionState.getPhase() == WorkoutSessionProtocol.Phase.PAUSED) {
+      action = WorkoutSessionProtocol.Action.RESUME;
+    } else if (trackerState == TrackerState.STOPPED
+        && (workoutSessionState.getPhase() == WorkoutSessionProtocol.Phase.ACTIVE
+            || workoutSessionState.getPhase() == WorkoutSessionProtocol.Phase.PAUSED)) {
+      action = WorkoutSessionProtocol.Action.FINISH;
+    }
+    if (action != null) {
+      long now = android.os.SystemClock.elapsedRealtime();
+      WorkoutSessionProtocol.Command event =
+          new WorkoutSessionProtocol.Command(
+              requestedSessionId,
+              java.util.UUID.randomUUID().toString(),
+              workoutSessionState.getLastSequence() + 1L,
+              workoutSessionState.getAuthority(),
+              action,
+              now,
+              0L);
+      applySessionCommand(event);
+    }
+  }
+
+  private void announceSessionStarted() {
+    if (sessionStartAnnounced
+        || requestedSessionId == null
+        || wearNode == null
+        || mGoogleApiClient == null
+        || !mGoogleApiClient.isConnected()) return;
+    try {
+      WorkoutSessionProtocol.Command started =
+          new WorkoutSessionProtocol.Command(
+              requestedSessionId,
+              java.util.UUID.randomUUID().toString(),
+              Math.max(1L, lastSessionCommandSequence),
+              WorkoutSessionProtocol.Actor.PHONE,
+              WorkoutSessionProtocol.Action.START,
+              android.os.SystemClock.elapsedRealtime(),
+              0L);
+      Wearable.MessageApi.sendMessage(
+          mGoogleApiClient,
+          wearNode,
+          Wear.Path.MSG_WORKOUT_SESSION_COMMAND,
+          WorkoutSessionProtocol.encodeCommand(started));
+      sessionStartAnnounced = true;
+    } catch (java.io.IOException | IllegalArgumentException error) {
+      Log.w(getName(), "Unable to announce active workout session", error);
+    }
   }
 
   public static class WearNotifier {

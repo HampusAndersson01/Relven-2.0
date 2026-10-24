@@ -95,6 +95,8 @@ public class TrackerReceiver extends DefaultTrackerComponent {
       if (!workout.isPaused()) workout.onPause(workout);
     } else if (Constants.Intents.RESUME_WORKOUT.contentEquals(action)) {
       if (workout.isPaused()) workout.onResume(workout);
+    } else if (Constants.Intents.STOP_WORKOUT.contentEquals(action)) {
+      tracker.stop();
     } else {
       Log.d(getClass().getName(), "onReceive: unhandled action: " + action);
     }
@@ -104,6 +106,7 @@ public class TrackerReceiver extends DefaultTrackerComponent {
     IntentFilter intentFilter = new IntentFilter();
     intentFilter.addAction(Constants.Intents.PAUSE_WORKOUT);
     intentFilter.addAction(Constants.Intents.RESUME_WORKOUT);
+    intentFilter.addAction(Constants.Intents.STOP_WORKOUT);
     intentFilter.addAction(Constants.Intents.NEW_LAP);
     intentFilter.addAction(Constants.Intents.PAUSE_RESUME);
     ContextCompat.registerReceiver(

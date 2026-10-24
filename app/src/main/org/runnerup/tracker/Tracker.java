@@ -59,6 +59,7 @@ import org.runnerup.R;
 import org.runnerup.common.tracker.TrackerState;
 import org.runnerup.common.util.Constants;
 import org.runnerup.common.util.ValueModel;
+import org.runnerup.common.wear.WorkoutSessionProtocol;
 import org.runnerup.db.DBHelper;
 import org.runnerup.export.SyncManager;
 import org.runnerup.hr.HRProvider;
@@ -379,6 +380,20 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
 
   public void setWorkout(Workout workout) {
     this.workout = workout;
+  }
+
+  /** Associates the already prepared RunnerUp tracker with its one logical phone/watch session. */
+  public void prepareWearWorkoutSession(String sessionId, boolean watchReady) {
+    trackerWear.prepareWorkoutSession(sessionId, watchReady);
+  }
+
+  public void resetWearWorkoutSession(String sessionId, boolean watchReady) {
+    trackerWear.resetWorkoutSession(sessionId, watchReady);
+  }
+
+  public WorkoutSessionProtocol.Result applyWearSessionCommand(
+      WorkoutSessionProtocol.Command command) {
+    return trackerWear.applySessionCommand(command);
   }
 
   public void start() {

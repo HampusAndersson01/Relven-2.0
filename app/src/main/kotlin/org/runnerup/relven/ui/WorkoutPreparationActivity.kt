@@ -2,10 +2,15 @@ package org.runnerup.relven.ui
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -14,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
+import androidx.core.content.ContextCompat
 import org.runnerup.common.tracker.TrackerState
 import org.runnerup.relven.ui.WearConnectionProvider.PreparationStatus
 import org.runnerup.tracker.Tracker
@@ -28,6 +34,65 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   private var selectedWorkoutAvailable by mutableStateOf(true)
   private var transferStarted = false
   private var restoreSelectedWorkout = false
+  private var trackerStartIssued = false
+  private var sessionCommandReceiverRegistered = false
+  private val sessionCommandReceiver =
+      object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+          val payload = intent.getByteArrayExtra(Constants.Intents.EXTRA_WORKOUT_SESSION_COMMAND) ?: return
+          val command =
+              try {
+                org.runnerup.common.wear.WorkoutSessionProtocol.decodeCommand(payload)
+              } catch (_: java.io.IOException) {
+                return
+              }
+          if (command.sessionId != state.value.sessionId ||
+              command.actor != org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH ||
+              command.action != org.runnerup.common.wear.WorkoutSessionProtocol.Action.START ||
+              command.plannedStartElapsedRealtimeMs != 0L) return
+          if (tracker?.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
+          val activeTracker = tracker ?: return
+          val applied = activeTracker.applyWearSessionCommand(command)
+          if (applied == org.runnerup.common.wear.WorkoutSessionProtocol.Result.ACCEPTED ||
+              applied == org.runnerup.common.wear.WorkoutSessionProtocol.Result.DUPLICATE) {
+            if (!state.acceptAuthoritativeStart(command)) return
+            countdownHandler.removeCallbacks(countdownTick)
+            countdownHandler.post(countdownTick)
+          }
+        }
+      }
+  private val countdownHandler = Handler(Looper.getMainLooper())
+  private val countdownTick = object : Runnable {
+    override fun run() {
+      if (isFinishing || isDestroyed || state.value.phase != WorkoutPreparationPhase.COUNTDOWN) return
+      val now = SystemClock.elapsedRealtime()
+      state.updateCountdown(now)
+      if (!state.isStartDue(now)) {
+        countdownHandler.postDelayed(this, COUNTDOWN_REFRESH_MS)
+        return
+      }
+      if (trackerStartIssued) return
+      val activeTracker = tracker
+      if (activeTracker == null || activeTracker.state != TrackerState.CONNECTED) {
+        cancelCountdown("Anslutningen till passmotorn försvann")
+        return
+      }
+      trackerStartIssued = true
+      try {
+        activeTracker.start()
+        if (!state.completeStart(SystemClock.elapsedRealtime())) {
+          // Tracker started only after the absolute deadline; state transition is still monotonic.
+          state.completeStart(state.value.plannedStartElapsedRealtimeMs)
+        }
+      } catch (error: RuntimeException) {
+        trackerStartIssued = false
+        cancelCountdown("Kunde inte starta passet")
+        return
+      }
+      WearConnectionProvider.cancelWorkoutPreparation(this@WorkoutPreparationActivity, state.value.sessionId)
+      runActivityLauncher.launch(Intent(this@WorkoutPreparationActivity, RunActivity::class.java))
+    }
+  }
 
   private val runActivityLauncher =
       registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -47,6 +112,10 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
             }
             if (WorkoutPreparationTrackerPolicy.shouldConnect(activeTracker.state)) {
               activeTracker.connect()
+            }
+            if (state.value.phase != WorkoutPreparationPhase.PREPARING) {
+              activeTracker.prepareWearWorkoutSession(
+                  state.value.sessionId, state.value.watchReady)
             }
           }
           updateTrackerState()
@@ -100,6 +169,12 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
           override fun handleOnBackPressed() = cancelPreparation()
         })
     bound = bindService(Intent(this, Tracker::class.java), connection, Context.BIND_AUTO_CREATE)
+    ContextCompat.registerReceiver(
+        this,
+        sessionCommandReceiver,
+        IntentFilter(Constants.Intents.WORKOUT_SESSION_COMMAND),
+        ContextCompat.RECEIVER_NOT_EXPORTED)
+    sessionCommandReceiverRegistered = true
     prepareWatch()
   }
 
@@ -129,6 +204,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
                   "Klockan kunde inte nås · fortsätt på mobilen"
               }
           state.onWatchPreparationFinished(ready, status)
+          tracker?.prepareWearWorkoutSession(sessionId, ready)
         }
   }
 
@@ -138,21 +214,25 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
 
   private fun startWorkout() {
     val activeTracker = tracker ?: return
-    if (activeTracker.state != TrackerState.CONNECTED || !selectedWorkoutAvailable || !state.requestStart()) return
-    try {
-      activeTracker.start()
-    } catch (error: RuntimeException) {
-      state.onStartFailed()
-      return
-    }
-    // The watch preparation is no longer pending once RunnerUp accepts the real start.
-    WearConnectionProvider.cancelWorkoutPreparation(this, state.value.sessionId)
-    runActivityLauncher.launch(Intent(this, RunActivity::class.java))
+    if (activeTracker.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
+    activeTracker.prepareWearWorkoutSession(state.value.sessionId, state.value.watchReady)
+    val command = state.createStartCommand(SystemClock.elapsedRealtime()) ?: return
+    val result = activeTracker.applyWearSessionCommand(command)
+    if (result == org.runnerup.common.wear.WorkoutSessionProtocol.Result.REJECTED) return
+    if (!state.acceptAuthoritativeStart(command)) return
+    countdownHandler.removeCallbacks(countdownTick)
+    countdownHandler.post(countdownTick)
   }
 
   private fun cancelPreparation() {
+    cancelCountdown("Passförberedelsen avbröts")
     WearConnectionProvider.cancelWorkoutPreparation(this, state.value.sessionId)
     finish()
+  }
+
+  private fun cancelCountdown(status: String) {
+    val command = state.cancelCountdown(status) ?: return
+    tracker?.applyWearSessionCommand(command)
   }
 
   private fun restoreSelectedWorkoutFromIntent(activeTracker: Tracker): Boolean {
@@ -172,6 +252,11 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   }
 
   override fun onDestroy() {
+    countdownHandler.removeCallbacksAndMessages(null)
+    if (sessionCommandReceiverRegistered) {
+      unregisterReceiver(sessionCommandReceiver)
+      sessionCommandReceiverRegistered = false
+    }
     tracker?.unregisterTrackerStateListener(trackerStateListener)
     if (bound) {
       unbindService(connection)
@@ -181,6 +266,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   }
 
   companion object {
+    private const val COUNTDOWN_REFRESH_MS = 50L
     private const val EXTRA_SESSION_ID = "org.runnerup.relven.preparation.session_id"
     private const val EXTRA_WORKOUT_NAME = "org.runnerup.relven.preparation.workout_name"
     private const val EXTRA_UPCOMING_STEP = "org.runnerup.relven.preparation.upcoming_step"

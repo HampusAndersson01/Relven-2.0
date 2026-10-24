@@ -37,6 +37,7 @@ import java.util.Objects;
 import org.runnerup.common.tracker.TrackerState;
 import org.runnerup.common.util.Constants;
 import org.runnerup.common.util.ValueModel;
+import org.runnerup.common.wear.WorkoutSessionProtocol;
 import org.runnerup.view.MainActivity;
 import org.runnerup.wear.WearableClient;
 
@@ -47,9 +48,27 @@ public class StateService extends Service
   public static final String UPDATE_TIME = "UPDATE_TIME";
 
   private final IBinder mBinder = new LocalBinder();
+  private final android.os.Handler handler =
+      new android.os.Handler(android.os.Looper.getMainLooper());
   private GoogleApiClient mGoogleApiClient;
   private WearableClient mDataClient;
   private String phoneNode;
+  private String workoutSessionId;
+  private long workoutCommandSequence;
+  private String pendingStartCommandId;
+  private long pendingStartSentAtWatchElapsedRealtimeMs = -1L;
+  private final ValueModel<Long> preparedCountdownDeadline = new ValueModel<>();
+  private WorkoutSessionProtocol.ClockOffset watchClockOffset;
+  private long clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+  private String pendingClockRequestId;
+  private long pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+  private Runnable clockRequestTimeout;
+  private final Runnable startRequestTimeout =
+      () -> {
+        pendingStartCommandId = null;
+        pendingStartSentAtWatchElapsedRealtimeMs = -1L;
+        preparedCountdownDeadline.set(null);
+      };
 
   private Bundle data;
   private final ValueModel<TrackerState> trackerState = new ValueModel<>();
@@ -117,6 +136,7 @@ public class StateService extends Service
             if (dataItem != null) {
               phoneNode = dataItem.getUri().getHost();
               Log.d(TAG, "getDataItem => phoneNode:" + phoneNode);
+              requestClockSync();
             }
           });
     }
@@ -150,6 +170,82 @@ public class StateService extends Service
     mDataClient.putData(Constants.Wear.Path.WEAR_NODE_ID);
   }
 
+  private void requestClockSync() {
+    if (pendingClockRequestId != null || checkConnection() != null) return;
+    long nowElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime();
+    if (watchClockOffset != null
+        && clockSampleReceivedAtWatchElapsedRealtimeMs >= 0
+        && nowElapsedRealtimeMs - clockSampleReceivedAtWatchElapsedRealtimeMs <= 600_000L) return;
+    pendingClockRequestId = java.util.UUID.randomUUID().toString();
+    String requestId = pendingClockRequestId;
+    pendingClockRequestSentAtElapsedRealtimeMs = nowElapsedRealtimeMs;
+    handler.removeCallbacks(clockRequestTimeout);
+    clockRequestTimeout =
+        () -> {
+          if (requestId.equals(pendingClockRequestId)) {
+            pendingClockRequestId = null;
+            pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+          }
+          clockRequestTimeout = null;
+        };
+    handler.postDelayed(clockRequestTimeout, 5_000L);
+    try {
+      byte[] request =
+          org.runnerup.common.wear.WearClockSyncProtocol.encodeRequest(
+              requestId, pendingClockRequestSentAtElapsedRealtimeMs);
+      Wearable.MessageApi.sendMessage(
+              mGoogleApiClient, phoneNode, Constants.Wear.Path.MSG_SESSION_CLOCK_REQUEST, request)
+          .setResultCallback(
+              result -> {
+                if (!result.getStatus().isSuccess()
+                    && pendingClockRequestId != null
+                    && pendingClockRequestId.equals(requestId)) {
+                  pendingClockRequestId = null;
+                  pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+                  handler.removeCallbacks(clockRequestTimeout);
+                  clockRequestTimeout = null;
+                }
+              });
+    } catch (java.io.IOException invalid) {
+      pendingClockRequestId = null;
+      pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+      handler.removeCallbacks(clockRequestTimeout);
+      clockRequestTimeout = null;
+      Log.w(TAG, "Unable to create clock synchronization request", invalid);
+    }
+  }
+
+  private void handleClockReply(MessageEvent event) {
+    if (phoneNode == null
+        || !phoneNode.equals(event.getSourceNodeId())
+        || pendingClockRequestId == null) return;
+    try {
+      org.runnerup.common.wear.WearClockSyncProtocol.Reply reply =
+          org.runnerup.common.wear.WearClockSyncProtocol.decodeReply(event.getData());
+      if (!pendingClockRequestId.equals(reply.getRequestId())
+          || pendingClockRequestSentAtElapsedRealtimeMs != reply.getWatchSentAtElapsedRealtimeMs())
+        return;
+      long watchReceivedAt = android.os.SystemClock.elapsedRealtime();
+      WorkoutSessionProtocol.ClockOffset offset =
+          WorkoutSessionProtocol.estimateWatchInitiatedClockOffset(
+              reply.getWatchSentAtElapsedRealtimeMs(),
+              reply.getPhoneReceivedAtElapsedRealtimeMs(),
+              reply.getPhoneSentAtElapsedRealtimeMs(),
+              watchReceivedAt,
+              2_000L);
+      if (offset.isValid()) {
+        watchClockOffset = offset;
+        clockSampleReceivedAtWatchElapsedRealtimeMs = watchReceivedAt;
+      }
+      pendingClockRequestId = null;
+      pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+      handler.removeCallbacks(clockRequestTimeout);
+      clockRequestTimeout = null;
+    } catch (java.io.IOException malformed) {
+      Log.w(TAG, "Ignoring invalid clock synchronization reply", malformed);
+    }
+  }
+
   private void clearData() {
     /* delete our node id */
     mDataClient.deleteData(Constants.Wear.Path.WEAR_NODE_ID);
@@ -158,7 +254,9 @@ public class StateService extends Service
   @Override
   public void onDestroy() {
     Log.d(TAG, "StateService.onDestroy()");
+    handler.removeCallbacksAndMessages(null);
     trackerState.clearListeners();
+    preparedCountdownDeadline.clearListeners();
     if (mGoogleApiClient != null) {
       if (mGoogleApiClient.isConnected()) {
         phoneNode = null;
@@ -213,7 +311,82 @@ public class StateService extends Service
 
   @Override
   public void onMessageReceived(MessageEvent messageEvent) {
-    if (Constants.Wear.Path.MSG_WORKOUT_EVENT.contentEquals(messageEvent.getPath())) {
+    if (Constants.Wear.Path.MSG_SESSION_CLOCK_REPLY.contentEquals(messageEvent.getPath())) {
+      handleClockReply(messageEvent);
+      return;
+    }
+    if (Constants.Wear.Path.MSG_WORKOUT_SESSION_COMMAND.contentEquals(messageEvent.getPath())) {
+      if (phoneNode == null || !phoneNode.equals(messageEvent.getSourceNodeId())) return;
+      try {
+        WorkoutSessionProtocol.Command command =
+            WorkoutSessionProtocol.decodeCommand(messageEvent.getData());
+        if (command.getActor() == WorkoutSessionProtocol.Actor.PHONE
+            && command.getAction() == WorkoutSessionProtocol.Action.CANCEL) {
+          if (workoutSessionId == null
+              || !workoutSessionId.equals(command.getSessionId())
+              || command.getSequence() <= workoutCommandSequence) return;
+          workoutCommandSequence = command.getSequence();
+          pendingStartCommandId = null;
+          pendingStartSentAtWatchElapsedRealtimeMs = -1L;
+          handler.removeCallbacks(startRequestTimeout);
+          preparedCountdownDeadline.set(null);
+        } else if (command.getActor() == WorkoutSessionProtocol.Actor.PHONE
+            && command.getAction() != WorkoutSessionProtocol.Action.START) {
+          if (workoutSessionId != null && !workoutSessionId.equals(command.getSessionId())) return;
+          if (command.getSequence() <= workoutCommandSequence) return;
+          workoutSessionId = command.getSessionId();
+          workoutCommandSequence = command.getSequence();
+        } else if (command.getActor() == WorkoutSessionProtocol.Actor.PHONE
+            && command.getAction() == WorkoutSessionProtocol.Action.START) {
+          boolean matchingStartAck = command.getCommandId().equals(pendingStartCommandId);
+          if (workoutSessionId != null && !workoutSessionId.equals(command.getSessionId())) return;
+          if (command.getSequence() < workoutCommandSequence
+              || (command.getSequence() == workoutCommandSequence && !matchingStartAck)) return;
+          workoutSessionId = command.getSessionId();
+          workoutCommandSequence = Math.max(workoutCommandSequence, command.getSequence());
+          long receivedAt = android.os.SystemClock.elapsedRealtime();
+          if (command.getCommandId().equals(pendingStartCommandId)) {
+            if (pendingStartSentAtWatchElapsedRealtimeMs >= 0
+                && command.getPlannedStartElapsedRealtimeMs()
+                    >= command.getIssuedAtElapsedRealtimeMs()) {
+              long phoneReceivedAt = command.getIssuedAtElapsedRealtimeMs();
+              long phoneSentAt = command.getPlannedStartElapsedRealtimeMs();
+              WorkoutSessionProtocol.ClockOffset offset =
+                  WorkoutSessionProtocol.estimateWatchInitiatedClockOffset(
+                      pendingStartSentAtWatchElapsedRealtimeMs,
+                      phoneReceivedAt,
+                      phoneSentAt,
+                      receivedAt,
+                      2_000L);
+              preparedCountdownDeadline.set(
+                  offset.isValid() ? offset.toWatchElapsedRealtime(phoneSentAt + 3_000L) : null);
+            } else {
+              preparedCountdownDeadline.set(null);
+            }
+          } else if (command.getPlannedStartElapsedRealtimeMs()
+              > command.getIssuedAtElapsedRealtimeMs()) {
+            long remaining =
+                command.getPlannedStartElapsedRealtimeMs() - command.getIssuedAtElapsedRealtimeMs();
+            boolean clockOffsetFresh =
+                watchClockOffset != null
+                    && clockSampleReceivedAtWatchElapsedRealtimeMs >= 0
+                    && receivedAt - clockSampleReceivedAtWatchElapsedRealtimeMs <= 600_000L;
+            preparedCountdownDeadline.set(
+                clockOffsetFresh
+                    ? watchClockOffset.toWatchElapsedRealtime(
+                        command.getPlannedStartElapsedRealtimeMs())
+                    : receivedAt + remaining);
+          } else {
+            preparedCountdownDeadline.set(null);
+          }
+          pendingStartCommandId = null;
+          pendingStartSentAtWatchElapsedRealtimeMs = -1L;
+          handler.removeCallbacks(startRequestTimeout);
+        }
+      } catch (java.io.IOException malformed) {
+        Log.w(TAG, "Ignoring malformed phone session update", malformed);
+      }
+    } else if (Constants.Wear.Path.MSG_WORKOUT_EVENT.contentEquals(messageEvent.getPath())) {
       data = DataMap.fromByteArray(messageEvent.getData()).toBundle();
       data.putLong(UPDATE_TIME, System.currentTimeMillis());
     } else {
@@ -241,12 +414,29 @@ public class StateService extends Service
   private void setPhoneNode(DataEvent ev) {
     if (ev.getType() == DataEvent.TYPE_CHANGED
         && Objects.requireNonNull(ev.getDataItem().getData()).length > 0) {
-      phoneNode = new String(ev.getDataItem().getData());
+      String newPhoneNode = new String(ev.getDataItem().getData());
+      if (!newPhoneNode.equals(phoneNode)) {
+        watchClockOffset = null;
+        clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+        pendingClockRequestId = null;
+        pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+        handler.removeCallbacks(clockRequestTimeout);
+        clockRequestTimeout = null;
+      }
+      phoneNode = newPhoneNode;
       Log.d(TAG, "onDataChanged: " + ev.getDataItem().getUri() + ", phoneNode=" + phoneNode);
+      requestClockSync();
       readDataIfMissing();
     } else if (ev.getType() == DataEvent.TYPE_DELETED) {
       Log.d(TAG, "onDataChanged: " + ev.getDataItem().getUri() + ", phoneNode=null");
       phoneNode = null;
+      watchClockOffset = null;
+      clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+      pendingClockRequestId = null;
+      pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+      handler.removeCallbacks(clockRequestTimeout);
+      clockRequestTimeout = null;
+      preparedCountdownDeadline.set(null);
       resetState();
     }
   }
@@ -337,7 +527,53 @@ public class StateService extends Service
         mGoogleApiClient, phoneNode, Constants.Wear.Path.MSG_CMD_WORKOUT_START, null);
   }
 
+  /** Keeps the command sequence scoped to the workout currently shown in the watch UI. */
+  public void setPreparedWorkoutSession(String sessionId) {
+    if (sessionId == null || sessionId.isEmpty()) return;
+    if (sessionId.equals(workoutSessionId)) {
+      requestClockSync();
+      return;
+    }
+    workoutSessionId = sessionId;
+    workoutCommandSequence = 0L;
+    pendingStartCommandId = null;
+    pendingStartSentAtWatchElapsedRealtimeMs = -1L;
+    handler.removeCallbacks(startRequestTimeout);
+    preparedCountdownDeadline.set(null);
+    requestClockSync();
+  }
+
+  /** Sends a request to start the prepared shared session; the phone schedules the real start. */
+  public boolean sendStart(String sessionId) {
+    if (checkConnection() != null) return false;
+    setPreparedWorkoutSession(sessionId);
+    pendingStartCommandId = java.util.UUID.randomUUID().toString();
+    pendingStartSentAtWatchElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime();
+    preparedCountdownDeadline.set(-1L);
+    handler.removeCallbacks(startRequestTimeout);
+    handler.postDelayed(startRequestTimeout, 5_000L);
+    if (!sendSessionCommand(
+        WorkoutSessionProtocol.Action.START,
+        0L,
+        pendingStartCommandId,
+        pendingStartSentAtWatchElapsedRealtimeMs)) {
+      pendingStartCommandId = null;
+      pendingStartSentAtWatchElapsedRealtimeMs = -1L;
+      handler.removeCallbacks(startRequestTimeout);
+      return false;
+    }
+    return true;
+  }
+
   public void sendPauseResume() {
+    if (workoutSessionId != null) {
+      if (getTrackerState() == TrackerState.STARTED) {
+        sendSessionCommand(WorkoutSessionProtocol.Action.PAUSE, 0L);
+      } else if (getTrackerState() == TrackerState.PAUSED) {
+        sendSessionCommand(WorkoutSessionProtocol.Action.RESUME, 0L);
+      }
+      return;
+    }
     var msg = checkConnection();
     if (msg != null) {
       Log.d(TAG, "sendPauseResume => not connected: " + msg);
@@ -354,6 +590,10 @@ public class StateService extends Service
   }
 
   public void sendNewLap() {
+    if (workoutSessionId != null) {
+      sendSessionCommand(WorkoutSessionProtocol.Action.LAP, 0L);
+      return;
+    }
     var msg = checkConnection();
     if (msg != null) {
       Log.d(TAG, "sendNewLap => not connected: " + msg);
@@ -362,5 +602,71 @@ public class StateService extends Service
 
     Wearable.MessageApi.sendMessage(
         mGoogleApiClient, phoneNode, Constants.Wear.Path.MSG_CMD_WORKOUT_NEW_LAP, null);
+  }
+
+  public void sendFinish() {
+    if (getTrackerState() != TrackerState.STARTED && getTrackerState() != TrackerState.PAUSED)
+      return;
+    if (workoutSessionId != null) {
+      sendSessionCommand(WorkoutSessionProtocol.Action.FINISH, 0L);
+      return;
+    }
+    var msg = checkConnection();
+    if (msg != null) {
+      Log.d(TAG, "sendFinish => not connected: " + msg);
+      return;
+    }
+    Wearable.MessageApi.sendMessage(
+        mGoogleApiClient, phoneNode, Constants.Wear.Path.MSG_CMD_WORKOUT_FINISH, null);
+  }
+
+  private void sendSessionCommand(WorkoutSessionProtocol.Action action, long plannedStart) {
+    sendSessionCommand(
+        action,
+        plannedStart,
+        java.util.UUID.randomUUID().toString(),
+        android.os.SystemClock.elapsedRealtime());
+  }
+
+  private boolean sendSessionCommand(
+      WorkoutSessionProtocol.Action action,
+      long plannedStart,
+      String commandId,
+      long issuedAtElapsedRealtimeMs) {
+    var msg = checkConnection();
+    if (msg != null) {
+      Log.d(TAG, "sendSessionCommand => not connected: " + msg);
+      return false;
+    }
+    try {
+      byte[] payload =
+          WorkoutSessionProtocol.encodeCommand(
+              new WorkoutSessionProtocol.Command(
+                  workoutSessionId,
+                  commandId,
+                  ++workoutCommandSequence,
+                  WorkoutSessionProtocol.Actor.WATCH,
+                  action,
+                  issuedAtElapsedRealtimeMs,
+                  plannedStart));
+      Wearable.MessageApi.sendMessage(
+          mGoogleApiClient, phoneNode, Constants.Wear.Path.MSG_WORKOUT_SESSION_COMMAND, payload);
+      return true;
+    } catch (java.io.IOException | IllegalArgumentException invalidCommand) {
+      Log.w(TAG, "Unable to send session command", invalidCommand);
+      return false;
+    }
+  }
+
+  public Long getPreparedCountdownDeadlineElapsedRealtimeMs() {
+    return preparedCountdownDeadline.get();
+  }
+
+  public void registerPreparedCountdownListener(ValueModel.ChangeListener<Long> listener) {
+    preparedCountdownDeadline.registerChangeListener(listener);
+  }
+
+  public void unregisterPreparedCountdownListener(ValueModel.ChangeListener<Long> listener) {
+    preparedCountdownDeadline.unregisterChangeListener(listener);
   }
 }
