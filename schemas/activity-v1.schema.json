@@ -27,7 +27,8 @@
             "averagePaceSecondsPerKm": {"type": "number", "exclusiveMinimum": 0},
             "averageHeartRateBpm": {"type": "integer", "minimum": 1},
             "maximumHeartRateBpm": {"type": "integer", "minimum": 1},
-            "averageCadenceStepsPerMinute": {"type": "number", "exclusiveMinimum": 0}
+            "averageCadenceStepsPerMinute": {"type": "number", "exclusiveMinimum": 0},
+            "averagePedalCadenceRpm": {"type": "number", "exclusiveMinimum": 0}
           }
         },
         "notes": {"type": "string"},

@@ -107,6 +107,52 @@ public class ActivityProviderShareStreamTest {
     assertEquals(0, savedActivity.getJSONArray("splits").length());
   }
 
+  @Test
+  public void sharedJsonOmitsNegativeStoredDurationsInsteadOfViolatingSchema() throws Exception {
+    ContentValues activity = new ContentValues();
+    activity.put(DB.ACTIVITY.START_TIME, START_MILLIS / 1000);
+    activity.put(DB.ACTIVITY.TIME, -3);
+    activity.put(DB.ACTIVITY.DISTANCE, 10.0);
+    activity.put(DB.ACTIVITY.SPORT, DB.ACTIVITY.SPORT_RUNNING);
+    long activityId = database.insertOrThrow(DB.ACTIVITY.TABLE, null, activity);
+    ContentValues lap = new ContentValues();
+    lap.put(DB.LAP.ACTIVITY, activityId);
+    lap.put(DB.LAP.LAP, 0);
+    lap.put(DB.LAP.TIME, -3);
+    lap.put(DB.LAP.PLANNED_TIME, -1);
+    database.insertOrThrow(DB.LAP.TABLE, null, lap);
+
+    JSONObject savedActivity =
+        new JSONObject(readSharedExport("json", activityId, "negative-duration.json"))
+            .getJSONObject("activity");
+
+    assertEquals("partial", savedActivity.getString("status"));
+    assertFalse(savedActivity.getJSONObject("summary").has("durationSeconds"));
+    assertFalse(savedActivity.getJSONObject("summary").has("averagePaceSecondsPerKm"));
+    JSONObject split = savedActivity.getJSONArray("splits").getJSONObject(0);
+    assertFalse(split.has("durationSeconds"));
+    assertFalse(split.has("planned"));
+  }
+
+  @Test
+  public void sharedJsonLabelsCyclingCadenceInRevolutionsPerMinute() throws Exception {
+    ContentValues activity = new ContentValues();
+    activity.put(DB.ACTIVITY.START_TIME, START_MILLIS / 1000);
+    activity.put(DB.ACTIVITY.TIME, 600);
+    activity.put(DB.ACTIVITY.DISTANCE, 5000.0);
+    activity.put(DB.ACTIVITY.SPORT, DB.ACTIVITY.SPORT_BIKING);
+    activity.put(DB.ACTIVITY.AVG_CADENCE, 82.0);
+    long activityId = database.insertOrThrow(DB.ACTIVITY.TABLE, null, activity);
+
+    JSONObject summary =
+        new JSONObject(readSharedExport("json", activityId, "bike.json"))
+            .getJSONObject("activity")
+            .getJSONObject("summary");
+
+    assertEquals(82.0, summary.getDouble("averagePedalCadenceRpm"), 0.001);
+    assertFalse(summary.has("averageCadenceStepsPerMinute"));
+  }
+
   private String readSharedExport(String format, long activityId, String fileName)
       throws Exception {
     Uri uri = sharedUri(format, activityId, fileName);

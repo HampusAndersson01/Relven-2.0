@@ -44,11 +44,14 @@ final class ActivityJsonExporter {
       if (!cursor.moveToFirst()) {
         throw new FileNotFoundException("Activity not found: " + activityId);
       }
+      if (cursor.getLong(1) <= 0L) {
+        throw new FileNotFoundException("Activity has no valid start timestamp: " + activityId);
+      }
       activity.put("id", "activity:" + cursor.getLong(0));
       activity.put("startedAtEpochSeconds", cursor.getLong(1));
       activity.put("sport", Sport.textOf(cursor.getInt(4)));
-      activity.put("status", cursor.isNull(2) ? "partial" : "completed");
-      putLong(summary, "durationSeconds", cursor, 2);
+      activity.put("status", cursor.isNull(2) || cursor.getLong(2) < 0L ? "partial" : "completed");
+      putNonNegativeLong(summary, "durationSeconds", cursor, 2);
       putPositiveDouble(summary, "distanceMeters", cursor, 3);
       if (!cursor.isNull(2) && !cursor.isNull(3)) {
         long duration = cursor.getLong(2);
@@ -59,7 +62,15 @@ final class ActivityJsonExporter {
       }
       putPositiveInt(summary, "averageHeartRateBpm", cursor, 5);
       putPositiveInt(summary, "maximumHeartRateBpm", cursor, 6);
-      putPositiveDouble(summary, "averageCadenceStepsPerMinute", cursor, 7);
+      int sport = cursor.getInt(4);
+      if (sport == DB.ACTIVITY.SPORT_BIKING || sport == DB.ACTIVITY.SPORT_STATIONARY_BIKE) {
+        putPositiveDouble(summary, "averagePedalCadenceRpm", cursor, 7);
+      } else if (sport == DB.ACTIVITY.SPORT_RUNNING
+          || sport == DB.ACTIVITY.SPORT_TREADMILL
+          || sport == DB.ACTIVITY.SPORT_WALKING
+          || sport == DB.ACTIVITY.SPORT_ORIENTEERING) {
+        putPositiveDouble(summary, "averageCadenceStepsPerMinute", cursor, 7);
+      }
       if (summary.length() > 0) activity.put("summary", summary);
       if (!cursor.isNull(8) && !cursor.getString(8).trim().isEmpty()) {
         activity.put("notes", cursor.getString(8));
@@ -89,11 +100,11 @@ final class ActivityJsonExporter {
       while (lapCursor.moveToNext()) {
         JSONObject split = new JSONObject();
         split.put("number", lapCursor.getInt(0) + 1);
-        putLong(split, "durationSeconds", lapCursor, 1);
+        putNonNegativeLong(split, "durationSeconds", lapCursor, 1);
         putPositiveDouble(split, "distanceMeters", lapCursor, 2);
         putPositiveInt(split, "averageHeartRateBpm", lapCursor, 3);
         JSONObject planned = new JSONObject();
-        putLong(planned, "durationSeconds", lapCursor, 4);
+        putNonNegativeLong(planned, "durationSeconds", lapCursor, 4);
         putPositiveDouble(planned, "distanceMeters", lapCursor, 5);
         if (planned.length() > 0) split.put("planned", planned);
         splits.put(split);
@@ -126,9 +137,11 @@ final class ActivityJsonExporter {
     writer.flush();
   }
 
-  private static void putLong(JSONObject target, String name, Cursor cursor, int column)
+  private static void putNonNegativeLong(JSONObject target, String name, Cursor cursor, int column)
       throws JSONException {
-    if (!cursor.isNull(column)) target.put(name, cursor.getLong(column));
+    if (!cursor.isNull(column) && cursor.getLong(column) >= 0L) {
+      target.put(name, cursor.getLong(column));
+    }
   }
 
   private static void putPositiveInt(JSONObject target, String name, Cursor cursor, int column)
