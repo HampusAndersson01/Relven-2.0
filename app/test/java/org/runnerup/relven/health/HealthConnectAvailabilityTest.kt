@@ -41,7 +41,8 @@ class HealthConnectAvailabilityTest {
             "android.permission.health.WRITE_EXERCISE_ROUTE",
             "android.permission.health.WRITE_DISTANCE",
             "android.permission.health.WRITE_HEART_RATE",
-            "android.permission.health.WRITE_SPEED"),
+            "android.permission.health.WRITE_SPEED",
+            "android.permission.health.WRITE_STEPS"),
         permissions)
     assertTrue(permissions.none { it.contains("READ_") })
   }

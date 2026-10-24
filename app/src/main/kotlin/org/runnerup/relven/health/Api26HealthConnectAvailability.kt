@@ -7,6 +7,7 @@ import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SpeedRecord
+import androidx.health.connect.client.records.StepsCadenceRecord
 import kotlin.reflect.KClass
 
 /** Health Connect SDK calls live here so they are reached only after the Android API 26 gate. */
@@ -29,7 +30,8 @@ internal object Api26HealthConnectAvailability {
           HealthPermission.PERMISSION_WRITE_EXERCISE_ROUTE,
           writePermission(DistanceRecord::class),
           writePermission(HeartRateRecord::class),
-          writePermission(SpeedRecord::class))
+          writePermission(SpeedRecord::class),
+          writePermission(StepsCadenceRecord::class))
 
   private fun writePermission(record: KClass<out androidx.health.connect.client.records.Record>) =
       HealthPermission.getWritePermission(record)

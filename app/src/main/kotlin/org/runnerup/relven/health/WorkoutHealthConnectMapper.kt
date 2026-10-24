@@ -2,10 +2,12 @@ package org.runnerup.relven.health
 
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseLap
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.SpeedRecord
+import androidx.health.connect.client.records.StepsCadenceRecord
 import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.meters
@@ -31,7 +33,15 @@ internal data class HealthConnectRouteSample(
     val longitude: Double,
     val altitudeMeters: Double? = null,
     val heartRateBpm: Double? = null,
-    val speedMetersPerSecond: Double? = null)
+    val speedMetersPerSecond: Double? = null,
+    val cadencePerMinute: Double? = null)
+
+/** Lap bounds must come from actual timestamped boundaries, never from duration-only summaries. */
+@RequiresApi(Build.VERSION_CODES.O)
+internal data class HealthConnectLap(
+    val startTime: Instant,
+    val endTime: Instant,
+    val distanceMeters: Double? = null)
 
 /** Recorded values only. Planned prescriptions and summary averages are deliberately excluded. */
 @RequiresApi(Build.VERSION_CODES.O)
@@ -45,14 +55,16 @@ internal data class RecordedWorkoutForHealthConnect(
     val endTime: Instant?,
     val disposition: HealthConnectSessionDisposition = HealthConnectSessionDisposition.Completed,
     val distanceMeters: Double? = null,
-    val route: List<HealthConnectRouteSample> = emptyList())
+    val route: List<HealthConnectRouteSample> = emptyList(),
+    val laps: List<HealthConnectLap> = emptyList())
 
 internal data class HealthConnectWriteCapabilities(
     val exercise: Boolean = true,
     val route: Boolean = true,
     val distance: Boolean = true,
     val heartRate: Boolean = true,
-    val speed: Boolean = true)
+    val speed: Boolean = true,
+    val cadence: Boolean = true)
 
 /** Converts one completed Relven activity into Health Connect write records; it has no read path. */
 @RequiresApi(Build.VERSION_CODES.O)
@@ -88,6 +100,16 @@ internal fun mapWorkoutForHealthConnect(
         null
       }
 
+  val exportedLaps = mutableListOf<ExerciseLap>()
+  var previousLapEnd: Instant? = null
+  workout.laps.sortedBy(HealthConnectLap::startTime).forEach { lap ->
+    if (lap.startTime < workout.startTime || lap.endTime > endTime || lap.endTime <= lap.startTime) return@forEach
+    if (previousLapEnd?.let { lap.startTime < it } == true) return@forEach
+    val length = lap.distanceMeters?.takeIf { it.isFinite() && it > 0.0 && it <= 1_000_000.0 }?.meters
+    exportedLaps += ExerciseLap(lap.startTime, lap.endTime, length)
+    previousLapEnd = lap.endTime
+  }
+
   val records = mutableListOf<Record>()
   val sessionClientId = clientRecordId(workout.sessionId, "session")
   records +=
@@ -100,6 +122,7 @@ internal fun mapWorkoutForHealthConnect(
           exerciseType = workout.activity.toHealthConnectExerciseType(),
           title = workout.title?.takeIf(String::isNotBlank)?.take(200),
           notes = workout.notes?.takeIf(String::isNotBlank)?.take(1_000),
+          laps = exportedLaps,
           exerciseRoute = exportedRoute)
 
   workout.distanceMeters
@@ -146,6 +169,24 @@ internal fun mapWorkoutForHealthConnect(
               endZoneOffset = null,
               samples = samples,
               metadata = metadata(clientRecordId(workout.sessionId, "speed"), workout.version))
+    }
+  }
+
+  if (capabilities.cadence) {
+    val samples = routeSamples.mapNotNull { sample ->
+      val cadence = sample.cadencePerMinute?.takeIf { it.isFinite() && it in 1.0..10_000.0 }
+          ?: return@mapNotNull null
+      StepsCadenceRecord.Sample(sample.time, cadence)
+    }
+    if (samples.isNotEmpty()) {
+      records +=
+          StepsCadenceRecord(
+              startTime = workout.startTime,
+              startZoneOffset = null,
+              endTime = endTime,
+              endZoneOffset = null,
+              samples = samples,
+              metadata = metadata(clientRecordId(workout.sessionId, "cadence"), workout.version))
     }
   }
   return records

@@ -26,14 +26,18 @@ unavailable on API 24 and 25; workout recording remains available.
 | `ExerciseRoute` on the session | Chronological recorded GPS points | Requires at least two valid points within the session interval. Invalid coordinates are omitted; duplicate timestamps are collapsed. Route permission is independent from session permission. |
 | `HeartRateRecord` | Heart-rate samples attached to recorded route points | Omitted unless at least one plausible measured sample exists. Session average/max are not converted into invented time-series samples. |
 | `SpeedRecord` | Speed samples attached to recorded route points | Omitted unless at least two positive finite measured samples exist. |
+| `StepsCadenceRecord` | Cadence samples attached to recorded route points | Omitted unless a positive finite recorded sample exists. Uses Health Connect's `WRITE_STEPS` permission for steps cadence. Aggregate cadence is never expanded into samples. |
 
 Current exercise mappings are running/treadmill → running, walking → walking, biking/stationary
-bike → biking, gym → strength training, and other/orienteering → other workout. Exercise laps,
-strength set repetitions, calories, and elevation gain are not currently emitted. Relven does not
-have consistently timestamped lap/set values or a supported reliable calorie/elevation-gain source
-for those exports in this mapping slice. Route altitude samples are included only when finite.
-Average cadence exists for some sessions but no cadence sample series is available, so it is not
-recast as measured cadence samples.
+bike → biking, gym → strength training, and other/orienteering → other workout. `ExerciseLap`
+mapping accepts only explicit timestamped lap bounds contained within the session and omits
+overlapping intervals. The database lap summary stores duration and distance without wall-clock
+bounds; those summaries alone are not sufficient to create laps. The application integration must
+derive bounds only from persisted timestamped lap transitions (and omit a lap if those transitions
+are unavailable). Strength set repetitions, calories, and elevation gain are not currently emitted.
+Relven does not have a supported reliable calorie/elevation-gain source for those exports in this
+mapping slice. Route altitude samples are included only when finite. Cadence is mapped only from
+persisted per-route-point cadence samples; average cadence is not expanded into a sample series.
 
 All exported records use stable session-derived client record IDs with distinct suffixes per record
 type and a caller-supplied client record version. The future outbox must keep the same IDs on retry
@@ -48,6 +52,7 @@ The current write boundary declares and returns only:
 - `WRITE_DISTANCE`
 - `WRITE_HEART_RATE`
 - `WRITE_SPEED`
+- `WRITE_STEPS` (the Health Connect permission associated with `StepsCadenceRecord`)
 
 There are no Health Connect read permissions. Only route altitude samples are available, not reliable
 total elevation gain, so `WRITE_ELEVATION_GAINED` is intentionally not requested. The final app flow

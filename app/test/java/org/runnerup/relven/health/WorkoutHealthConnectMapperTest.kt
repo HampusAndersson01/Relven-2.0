@@ -4,6 +4,7 @@ import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.StepsCadenceRecord
 import androidx.health.connect.client.records.SpeedRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,13 +24,14 @@ class WorkoutHealthConnectMapperTest {
         run(
             distanceMeters = 5_000.0,
             route = listOf(
-                sample(start.plusSeconds(20), latitude = 59.0, heartRate = 140.0, speed = 2.8),
-                sample(start.plusSeconds(10), latitude = 58.999, heartRate = 135.0, speed = 2.5))))
+                sample(start.plusSeconds(20), latitude = 59.0, heartRate = 140.0, speed = 2.8, cadence = 166.0),
+                sample(start.plusSeconds(10), latitude = 58.999, heartRate = 135.0, speed = 2.5, cadence = 165.0))))
 
     val session = records.filterIsInstance<ExerciseSessionRecord>().single()
     val distance = records.filterIsInstance<DistanceRecord>().single()
     val heartRate = records.filterIsInstance<HeartRateRecord>().single()
     val speed = records.filterIsInstance<SpeedRecord>().single()
+    val cadence = records.filterIsInstance<StepsCadenceRecord>().single()
 
     assertEquals(ExerciseSessionRecord.EXERCISE_TYPE_RUNNING, session.exerciseType)
     assertEquals(start, session.startTime)
@@ -44,9 +46,12 @@ class WorkoutHealthConnectMapperTest {
     assertEquals(5_000.0, distance.distance.inMeters, 0.001)
     assertEquals(2, heartRate.samples.size)
     assertEquals(2, speed.samples.size)
+    assertEquals(2, cadence.samples.size)
+    assertEquals(165.0, cadence.samples.first().rate, 0.001)
     assertEquals("relven-run-42-distance", distance.metadata.clientRecordId)
     assertEquals("relven-run-42-heart-rate", heartRate.metadata.clientRecordId)
     assertEquals("relven-run-42-speed", speed.metadata.clientRecordId)
+    assertEquals("relven-run-42-cadence", cadence.metadata.clientRecordId)
     assertEquals(3L, speed.metadata.clientRecordVersion)
   }
 
@@ -68,6 +73,22 @@ class WorkoutHealthConnectMapperTest {
   }
 
   @Test
+  fun mapsOnlyTimestampedNonOverlappingLapsInsideSession() {
+    val records = mapWorkoutForHealthConnect(
+        run().copy(
+            laps = listOf(
+                HealthConnectLap(start.plusSeconds(600), start.plusSeconds(1200), 1_000.0),
+                HealthConnectLap(start, start.plusSeconds(600), 1_000.0),
+                HealthConnectLap(start.plusSeconds(1200), end.plusSeconds(1), 1_000.0))))
+
+    val session = records.filterIsInstance<ExerciseSessionRecord>().single()
+    assertEquals(2, session.laps.size)
+    assertEquals(start, session.laps.first().startTime)
+    assertEquals(start.plusSeconds(600), session.laps.first().endTime)
+    assertEquals(1_000.0, session.laps.first().length!!.inMeters, 0.001)
+  }
+
+  @Test
   fun omitsUnknownMeasurementsAndDoesNotCreateRouteFromOnePoint() {
     val records = mapWorkoutForHealthConnect(
         run(distanceMeters = null, route = listOf(sample(start.plusSeconds(5), latitude = 59.0))))
@@ -76,6 +97,7 @@ class WorkoutHealthConnectMapperTest {
     val session = records.single() as ExerciseSessionRecord
     assertTrue(session.exerciseRouteResult is ExerciseRouteResult.NoData)
     assertFalse(records.any { it is DistanceRecord || it is HeartRateRecord || it is SpeedRecord })
+    assertFalse(records.any { it is StepsCadenceRecord })
   }
 
   @Test
@@ -89,12 +111,13 @@ class WorkoutHealthConnectMapperTest {
 
     val records = mapWorkoutForHealthConnect(
         input,
-        HealthConnectWriteCapabilities(exercise = true, route = false, distance = false, heartRate = true, speed = false))
+        HealthConnectWriteCapabilities(exercise = true, route = false, distance = false, heartRate = true, speed = false, cadence = false))
 
     val session = records.filterIsInstance<ExerciseSessionRecord>().single()
     assertTrue(session.exerciseRouteResult is ExerciseRouteResult.NoData)
     assertEquals(1, records.filterIsInstance<HeartRateRecord>().single().samples.size)
     assertFalse(records.any { it is DistanceRecord || it is SpeedRecord })
+    assertFalse(records.any { it is StepsCadenceRecord })
   }
 
   @Test
@@ -129,11 +152,13 @@ class WorkoutHealthConnectMapperTest {
       time: Instant,
       latitude: Double,
       heartRate: Double? = null,
-      speed: Double? = null) = HealthConnectRouteSample(
+      speed: Double? = null,
+      cadence: Double? = null) = HealthConnectRouteSample(
       time = time,
       latitude = latitude,
       longitude = 18.0,
       altitudeMeters = null,
       heartRateBpm = heartRate,
-      speedMetersPerSecond = speed)
+      speedMetersPerSecond = speed,
+      cadencePerMinute = cadence)
 }
