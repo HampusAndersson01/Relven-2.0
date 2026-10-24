@@ -208,10 +208,16 @@ internal fun StrengthSessionScreen(
                 fontWeight = FontWeight.SemiBold)
             when (session.phase) {
               StrengthSession.Phase.REPETITIONS -> {
-                RepetitionCountEntry(
-                    key = "${session.executionId}:${session.exerciseIndex}:${session.setNumber}",
-                    isSaving = isSavingProgress,
-                    onConfirm = onLogRepetitions)
+                if (pendingResult != null) {
+                  Text(
+                      stringResource(R.string.Strength_session_log_pending_first),
+                      color = RelvenColors.MutedText)
+                } else {
+                  RepetitionCountEntry(
+                      key = "${session.executionId}:${session.exerciseIndex}:${session.setNumber}",
+                      isSaving = isSavingProgress,
+                      onConfirm = onLogRepetitions)
+                }
               }
               StrengthSession.Phase.TIMED_WORK -> {
                 Text(

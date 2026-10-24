@@ -93,6 +93,29 @@ class StrengthSessionTest {
   }
 
   @Test
+  fun pendingTimedResultIsLoggedBeforeTheCurrentManualSet() {
+    val mixedWorkout =
+        RelvenStrengthWorkoutParser.Workout(
+            "mixed",
+            "Mixed workout",
+            "strength",
+            listOf(
+                exercise("rep-test", "Push-up test", 1, 1, 20, 0, duration = 3),
+                exercise("squat", "Squat", 1, 8, 12, 0)),
+            "{}")
+    val manualSet = StrengthSession.start("plan", "entry", mixedWorkout, 1_000).tickAt(4_000)
+
+    val loggedPending = manualSet.completeRepetitions(11, nowElapsedRealtimeMillis = 4_000)
+    assertEquals(0, loggedPending.results.single().exerciseIndex)
+    assertEquals(StrengthSession.Phase.REPETITIONS, loggedPending.phase)
+
+    val complete = loggedPending.completeRepetitions(12, nowElapsedRealtimeMillis = 5_000)
+    assertTrue(complete.isComplete)
+    assertEquals(listOf(11, 12), complete.results.map { it.repetitions })
+    assertEquals(listOf(0, 1), complete.results.map { it.exerciseIndex })
+  }
+
+  @Test
   fun pauseResumePreservesActiveTimerAndSkipRestAdvancesImmediately() {
     val timed = StrengthSession.start("plan", "scheduled", workout)
         .completeRepetitions(8)
