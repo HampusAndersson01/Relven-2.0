@@ -46,6 +46,7 @@ class RelvenSettingsRepositoryTest {
     assertFalse(repository.state.value.autoStartGps)
     assertTrue(repository.state.value.autoPause)
     assertFalse(repository.state.value.autoLap)
+    assertFalse(repository.state.value.autoLapIntervals)
     assertTrue(preferences.getBoolean(context.getString(R.string.pref_keep_screen_on), false))
   }
 
@@ -57,15 +58,18 @@ class RelvenSettingsRepositoryTest {
     repository.setAutoStartGps(false)
     repository.setAutoPause(true)
     repository.setAutoLap(true)
+    repository.setAutoLapIntervals(true)
 
     assertTrue(preferences.getBoolean(context.getString(R.string.pref_keep_screen_on), false))
     assertFalse(preferences.getBoolean(context.getString(R.string.pref_startgps), true))
     assertTrue(preferences.getBoolean(context.getString(R.string.pref_autopause_active), false))
     assertTrue(preferences.getBoolean(context.getString(R.string.pref_autolap_active), false))
+    assertTrue(preferences.getBoolean(context.getString(R.string.pref_step_autolap_active), false))
     assertEquals(true, repository.state.value.keepScreenOn)
     assertEquals(false, repository.state.value.autoStartGps)
     assertEquals(true, repository.state.value.autoPause)
     assertEquals(true, repository.state.value.autoLap)
+    assertEquals(true, repository.state.value.autoLapIntervals)
   }
 
   @Test

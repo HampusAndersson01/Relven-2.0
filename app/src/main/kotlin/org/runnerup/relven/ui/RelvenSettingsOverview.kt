@@ -47,6 +47,7 @@ internal fun RelvenSettingsOverview(
     onAutoStartGpsChanged: (Boolean) -> Unit,
     onAutoPauseChanged: (Boolean) -> Unit,
     onAutoLapChanged: (Boolean) -> Unit,
+    onAutoLapIntervalsChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier) {
   BackHandler(enabled = route is SettingsRoute.Page) {
     onRouteChanged(SettingsRoute.Overview)
@@ -102,10 +103,15 @@ internal fun RelvenSettingsOverview(
                 checked = settings.autoPause,
                 onCheckedChange = onAutoPauseChanged)
             SettingsSwitch(
-                title = "Automatiska varv",
+                title = "Automatiska varv för fria pass",
                 summary = "Registrera varv enligt din befintliga varvlängd",
                 checked = settings.autoLap,
                 onCheckedChange = onAutoLapChanged)
+            SettingsSwitch(
+                title = "Automatiska varv för intervallpass",
+                summary = "Registrera varv för intervallpass",
+                checked = settings.autoLapIntervals,
+                onCheckedChange = onAutoLapIntervalsChanged)
           }
           SettingsPage.GpsSensors -> SettingsCard {
             SettingsSwitch(

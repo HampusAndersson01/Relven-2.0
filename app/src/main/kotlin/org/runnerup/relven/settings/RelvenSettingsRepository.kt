@@ -17,6 +17,7 @@ class RelvenSettingsRepository(context: Context) : AutoCloseable {
   private val autoStartGpsKey = appContext.getString(R.string.pref_startgps)
   private val autoPauseKey = appContext.getString(R.string.pref_autopause_active)
   private val autoLapKey = appContext.getString(R.string.pref_autolap_active)
+  private val intervalAutoLapKey = appContext.getString(R.string.pref_step_autolap_active)
   private val mutableState = MutableStateFlow(readState())
   val state: StateFlow<RelvenSettingsSnapshot> = mutableState.asStateFlow()
 
@@ -26,7 +27,7 @@ class RelvenSettingsRepository(context: Context) : AutoCloseable {
       }
 
   private val observedKeys: Set<String>
-    get() = setOf(keepScreenOnKey, autoStartGpsKey, autoPauseKey, autoLapKey)
+    get() = setOf(keepScreenOnKey, autoStartGpsKey, autoPauseKey, autoLapKey, intervalAutoLapKey)
 
   init {
     preferences.registerOnSharedPreferenceChangeListener(listener)
@@ -40,6 +41,8 @@ class RelvenSettingsRepository(context: Context) : AutoCloseable {
 
   fun setAutoLap(enabled: Boolean) = update(autoLapKey, enabled)
 
+  fun setAutoLapIntervals(enabled: Boolean) = update(intervalAutoLapKey, enabled)
+
   private fun update(key: String, value: Boolean) {
     if (preferences.getBoolean(key, defaultFor(key)) != value) {
       preferences.edit { putBoolean(key, value) }
@@ -52,7 +55,8 @@ class RelvenSettingsRepository(context: Context) : AutoCloseable {
           keepScreenOn = preferences.getBoolean(keepScreenOnKey, false),
           autoStartGps = preferences.getBoolean(autoStartGpsKey, true),
           autoPause = preferences.getBoolean(autoPauseKey, false),
-          autoLap = preferences.getBoolean(autoLapKey, false))
+          autoLap = preferences.getBoolean(autoLapKey, false),
+          autoLapIntervals = preferences.getBoolean(intervalAutoLapKey, false))
 
   private fun defaultFor(key: String): Boolean = when (key) {
     keepScreenOnKey -> false
@@ -69,4 +73,5 @@ data class RelvenSettingsSnapshot(
     val keepScreenOn: Boolean,
     val autoStartGps: Boolean,
     val autoPause: Boolean,
-    val autoLap: Boolean)
+    val autoLap: Boolean,
+    val autoLapIntervals: Boolean)

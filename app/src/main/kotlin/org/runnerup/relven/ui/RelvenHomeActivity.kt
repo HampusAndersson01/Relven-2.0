@@ -170,7 +170,7 @@ class RelvenHomeActivity : FragmentActivity(), GymWorkoutStarter {
   private var currentTimeMillis by mutableLongStateOf(System.currentTimeMillis())
   private var destination by mutableStateOf(HomeDestination.Today)
   private var settingsRoute by mutableStateOf<SettingsRoute>(SettingsRoute.Overview)
-  private var settingsSnapshot by mutableStateOf(RelvenSettingsSnapshot(false, true, false, false))
+  private var settingsSnapshot by mutableStateOf(RelvenSettingsSnapshot(false, true, false, false, false))
   private lateinit var settingsRepository: RelvenSettingsRepository
   private var planLibraryOpen by mutableStateOf(false)
   private var activityHistoryState by mutableStateOf<ActivityHistoryLoadState>(ActivityHistoryLoadState.Loading)
@@ -387,6 +387,7 @@ class RelvenHomeActivity : FragmentActivity(), GymWorkoutStarter {
             onAutoStartGpsChanged = settingsRepository::setAutoStartGps,
             onAutoPauseChanged = settingsRepository::setAutoPause,
             onAutoLapChanged = settingsRepository::setAutoLap,
+            onAutoLapIntervalsChanged = settingsRepository::setAutoLapIntervals,
             startFragmentManager = supportFragmentManager,
             onSelectDestination = ::selectHomeDestination,
             onRetryProgress = ::loadProgress,
@@ -1923,6 +1924,7 @@ private fun RelvenHome(
     onAutoStartGpsChanged: (Boolean) -> Unit,
     onAutoPauseChanged: (Boolean) -> Unit,
     onAutoLapChanged: (Boolean) -> Unit,
+    onAutoLapIntervalsChanged: (Boolean) -> Unit,
     planLibraryState: PlanLibraryState,
     favoriteWorkouts: List<FavoriteWorkout>,
     planLibraryOpen: Boolean,
@@ -2143,7 +2145,8 @@ private fun RelvenHome(
           onKeepScreenOnChanged = onKeepScreenOnChanged,
           onAutoStartGpsChanged = onAutoStartGpsChanged,
           onAutoPauseChanged = onAutoPauseChanged,
-          onAutoLapChanged = onAutoLapChanged)
+          onAutoLapChanged = onAutoLapChanged,
+          onAutoLapIntervalsChanged = onAutoLapIntervalsChanged)
     } else if (destination == HomeDestination.History) {
       ActivityHistoryScreen(
           loadState = activityHistoryState,

@@ -23,11 +23,12 @@ class RelvenSettingsOverviewTest {
       RelvenSettingsOverview(
           route = SettingsRoute.Page(SettingsPage.Workout),
           onRouteChanged = {},
-          settings = RelvenSettingsSnapshot(false, true, false, false),
+          settings = RelvenSettingsSnapshot(false, true, false, false, false),
           onKeepScreenOnChanged = {},
           onAutoStartGpsChanged = {},
           onAutoPauseChanged = { requestedAutoPause = it },
-          onAutoLapChanged = {})
+          onAutoLapChanged = {},
+          onAutoLapIntervalsChanged = {})
     }
 
     composeRule.onNodeWithText("Automatisk paus").performClick()
