@@ -17,6 +17,21 @@ public final class WorkoutSessionProtocol {
 
   private WorkoutSessionProtocol() {}
 
+  /** Converts an accepted phone command into the phone-authority projection sent to the watch. */
+  public static Command phoneProjection(Command acceptedCommand) {
+    if (acceptedCommand == null || acceptedCommand.getActor() != Actor.PHONE) {
+      throw new IllegalArgumentException("Only accepted phone commands can be projected");
+    }
+    return new Command(
+        acceptedCommand.getSessionId(),
+        acceptedCommand.getCommandId(),
+        acceptedCommand.getSequence(),
+        Actor.PHONE,
+        acceptedCommand.getAction(),
+        acceptedCommand.getIssuedAtElapsedRealtimeMs(),
+        acceptedCommand.getPlannedStartElapsedRealtimeMs());
+  }
+
   public enum Actor {
     PHONE,
     WATCH

@@ -728,15 +728,7 @@ public class TrackerWear extends DefaultTrackerComponent
   private void publishPhoneSessionCommand(WorkoutSessionProtocol.Command command) {
     if (wearNode == null || mGoogleApiClient == null || !mGoogleApiClient.isConnected()) return;
     try {
-      WorkoutSessionProtocol.Command projection =
-          new WorkoutSessionProtocol.Command(
-              command.getSessionId(),
-              command.getCommandId(),
-              command.getSequence(),
-              WorkoutSessionProtocol.Actor.PHONE,
-              WorkoutSessionProtocol.Action.START,
-              command.getIssuedAtElapsedRealtimeMs(),
-              command.getPlannedStartElapsedRealtimeMs());
+      WorkoutSessionProtocol.Command projection = WorkoutSessionProtocol.phoneProjection(command);
       Wearable.MessageApi.sendMessage(
           mGoogleApiClient,
           wearNode,

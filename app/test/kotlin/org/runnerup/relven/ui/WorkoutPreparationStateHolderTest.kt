@@ -110,4 +110,32 @@ class WorkoutPreparationStateHolderTest {
     assertEquals(5L, state.lastCommand?.sequence)
     assertEquals(13_000L, state.value.plannedStartElapsedRealtimeMs)
   }
+
+  @Test
+  fun scheduledWatchStartIsRecognizedAsThePhoneCountdownCommand() {
+    val sessionId = newSessionId()
+    val scheduled =
+        org.runnerup.common.wear.WorkoutSessionProtocol.Command(
+            sessionId,
+            UUID.randomUUID().toString(),
+            2L,
+            org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH,
+            org.runnerup.common.wear.WorkoutSessionProtocol.Action.START,
+            10_100L,
+            13_100L)
+
+    assertTrue(isScheduledWatchStartForSession(scheduled, sessionId))
+    assertFalse(isScheduledWatchStartForSession(scheduled, newSessionId()))
+
+    val invalid =
+        org.runnerup.common.wear.WorkoutSessionProtocol.Command(
+            sessionId,
+            UUID.randomUUID().toString(),
+            3L,
+            org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH,
+            org.runnerup.common.wear.WorkoutSessionProtocol.Action.START,
+            10_100L,
+            10_100L)
+    assertFalse(isScheduledWatchStartForSession(invalid, sessionId))
+  }
 }

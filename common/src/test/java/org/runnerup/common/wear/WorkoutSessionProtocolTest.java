@@ -36,6 +36,29 @@ public class WorkoutSessionProtocolTest {
   }
 
   @Test
+  public void phoneProjectionPreservesTheAcceptedControlActionAndSequence() {
+    String sessionId = UUID.randomUUID().toString();
+    for (WorkoutSessionProtocol.Action action : WorkoutSessionProtocol.Action.values()) {
+      WorkoutSessionProtocol.Command accepted =
+          new WorkoutSessionProtocol.Command(
+              sessionId,
+              UUID.randomUUID().toString(),
+              9,
+              WorkoutSessionProtocol.Actor.PHONE,
+              action,
+              10_000,
+              action == WorkoutSessionProtocol.Action.START ? 13_000 : 0);
+
+      WorkoutSessionProtocol.Command projection = WorkoutSessionProtocol.phoneProjection(accepted);
+
+      assertEquals(WorkoutSessionProtocol.Actor.PHONE, projection.getActor());
+      assertEquals(action, projection.getAction());
+      assertEquals(accepted.getSequence(), projection.getSequence());
+      assertEquals(accepted.getCommandId(), projection.getCommandId());
+    }
+  }
+
+  @Test
   public void rejectsMalformedIdsEnumsAndTrailingData() throws Exception {
     try {
       new WorkoutSessionProtocol.Command(

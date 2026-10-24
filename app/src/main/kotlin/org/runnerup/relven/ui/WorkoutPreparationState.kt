@@ -25,6 +25,16 @@ internal data class WorkoutPreparationUiState(
     val countdownValue: Int = 0
 )
 
+internal fun isScheduledWatchStartForSession(
+    command: WorkoutSessionProtocol.Command,
+    expectedSessionId: String
+): Boolean =
+    command.sessionId == expectedSessionId &&
+        command.actor == WorkoutSessionProtocol.Actor.WATCH &&
+        command.action == WorkoutSessionProtocol.Action.START &&
+        command.plannedStartElapsedRealtimeMs > command.issuedAtElapsedRealtimeMs &&
+        command.plannedStartElapsedRealtimeMs - command.issuedAtElapsedRealtimeMs <= 10_000L
+
 internal class WorkoutPreparationStateHolder(
     sessionId: String,
     workoutName: String,

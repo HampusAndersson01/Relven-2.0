@@ -46,10 +46,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
               } catch (_: java.io.IOException) {
                 return
               }
-          if (command.sessionId != state.value.sessionId ||
-              command.actor != org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH ||
-              command.action != org.runnerup.common.wear.WorkoutSessionProtocol.Action.START ||
-              command.plannedStartElapsedRealtimeMs != 0L) return
+          if (!isScheduledWatchStartForSession(command, state.value.sessionId)) return
           if (tracker?.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
           val activeTracker = tracker ?: return
           val applied = activeTracker.applyWearSessionCommand(command)
