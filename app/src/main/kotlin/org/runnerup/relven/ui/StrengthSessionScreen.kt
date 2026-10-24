@@ -64,6 +64,8 @@ internal fun StrengthSessionScreen(
     isSavingCompletion: Boolean,
     onTick: () -> Unit,
     onLogRepetitions: (Int) -> Unit,
+    onSkipPendingResult: () -> Unit,
+    onSkipExercise: () -> Unit,
     onSkipRest: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -126,6 +128,12 @@ internal fun StrengthSessionScreen(
               key = "${session.executionId}:${pending.exerciseIndex}:${pending.setNumber}",
               isSaving = isSavingProgress,
               onConfirm = onLogRepetitions)
+          TextButton(
+              onClick = onSkipPendingResult,
+              enabled = !isSavingProgress,
+              modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(stringResource(R.string.Strength_session_skip_result))
+          }
         }
       }
     }
@@ -137,8 +145,17 @@ internal fun StrengthSessionScreen(
           fontSize = 20.sp,
           fontWeight = FontWeight.SemiBold)
       session.results.forEach { result ->
-        val detail = result.repetitions?.let { "$it ${stringResource(R.string.Strength_session_repetitions).lowercase()}" }
-            ?: "${result.durationSeconds} s"
+        val detail =
+            when (result.status) {
+              StrengthSession.SetResult.ResultStatus.SKIPPED ->
+                  stringResource(R.string.Strength_session_skipped)
+              StrengthSession.SetResult.ResultStatus.INCOMPLETE ->
+                  stringResource(R.string.Strength_session_incomplete)
+              StrengthSession.SetResult.ResultStatus.COMPLETED ->
+                  result.repetitions?.let {
+                    "$it ${stringResource(R.string.Strength_session_repetitions).lowercase()}"
+                  } ?: "${result.durationSeconds} s"
+            }
         Text("${result.exerciseName} · ${result.setNumber}: $detail", color = RelvenColors.Text)
       }
       if (completed) {
@@ -240,6 +257,15 @@ internal fun StrengthSessionScreen(
               Text(
                   stringResource(R.string.Strength_session_next, nextExercise.name()),
                   color = RelvenColors.MutedText)
+            }
+            if (session.phase != StrengthSession.Phase.PAUSED &&
+                session.phase != StrengthSession.Phase.AWAITING_RESULT) {
+              TextButton(
+                  onClick = onSkipExercise,
+                  enabled = !isSavingProgress,
+                  modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.Strength_session_skip_exercise))
+              }
             }
           }
         }
