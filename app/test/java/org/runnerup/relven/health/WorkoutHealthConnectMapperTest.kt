@@ -89,6 +89,15 @@ class WorkoutHealthConnectMapperTest {
   }
 
   @Test
+  fun doesNotExportCyclingPedalCadenceAsStepsCadence() {
+    val records = mapWorkoutForHealthConnect(
+        run(route = listOf(sample(start.plusSeconds(5), latitude = 59.0, cadence = 82.0)))
+            .copy(activity = HealthConnectActivity.Cycling))
+
+    assertFalse(records.any { it is StepsCadenceRecord })
+  }
+
+  @Test
   fun omitsUnknownMeasurementsAndDoesNotCreateRouteFromOnePoint() {
     val records = mapWorkoutForHealthConnect(
         run(distanceMeters = null, route = listOf(sample(start.plusSeconds(5), latitude = 59.0))))

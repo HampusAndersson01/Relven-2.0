@@ -172,7 +172,9 @@ internal fun mapWorkoutForHealthConnect(
     }
   }
 
-  if (capabilities.cadence) {
+  // Health Connect's StepsCadenceRecord is specifically steps/minute. Relven's cycling cadence
+  // represents pedal revolutions, so it must not be exported as step cadence.
+  if (capabilities.cadence && workout.activity in setOf(HealthConnectActivity.Running, HealthConnectActivity.Walking)) {
     val samples = routeSamples.mapNotNull { sample ->
       val cadence = sample.cadencePerMinute?.takeIf { it.isFinite() && it in 1.0..10_000.0 }
           ?: return@mapNotNull null
