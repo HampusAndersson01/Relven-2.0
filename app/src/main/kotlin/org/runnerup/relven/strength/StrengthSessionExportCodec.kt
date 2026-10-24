@@ -1,6 +1,7 @@
 package org.runnerup.relven.strength
 
 import java.nio.charset.StandardCharsets
+import java.math.BigDecimal
 import org.json.JSONArray
 import org.json.JSONObject
 import org.runnerup.workout.RelvenStrengthWorkoutParser
@@ -65,37 +66,42 @@ internal object StrengthSessionExportCodec {
     require(json.toByteArray(StandardCharsets.UTF_8).size <= MAX_EXPORT_BYTES) { "Session import is too large" }
     val root = JSONObject(json)
     requireKeys(root, setOf("format", "schemaVersion", "prescription", "performance"))
-    require(root.getString("format") == FORMAT) { "Unsupported workout export format" }
-    require(root.getInt("schemaVersion") == VERSION) { "Unsupported workout export version" }
+    require(root.requiredText("format", FORMAT.length) == FORMAT) { "Unsupported workout export format" }
+    require(root.requiredInt("schemaVersion") == VERSION) { "Unsupported workout export version" }
 
-    val workout = RelvenStrengthWorkoutParser.parse(root.getJSONObject("prescription").toString())
-    val performance = root.getJSONObject("performance")
+    val prescription = root.opt("prescription") as? JSONObject
+        ?: throw IllegalArgumentException("Workout prescription must be an object")
+    val workout = RelvenStrengthWorkoutParser.parse(prescription.toString())
+    val performance = root.opt("performance") as? JSONObject
+        ?: throw IllegalArgumentException("Workout performance must be an object")
     requireKeys(
         performance,
         setOf("sessionId", "planId", "scheduledEntryId", "sessionStatus", "completion", "finishedAtMillis", "sets"))
-    val sessionId = requiredText(performance, "sessionId", 160)
-    val planId = requiredText(performance, "planId", 160)
-    val scheduledEntryId = requiredText(performance, "scheduledEntryId", 160)
-    require(performance.getString("sessionStatus") == "COMPLETED") { "Only completed sessions can be imported" }
-    val finishedAtMillis = performance.getLong("finishedAtMillis")
+    val sessionId = performance.requiredText("sessionId", 160)
+    val planId = performance.requiredText("planId", 160)
+    val scheduledEntryId = performance.requiredText("scheduledEntryId", 160)
+    require(performance.requiredText("sessionStatus", 16) == "COMPLETED") { "Only completed sessions can be imported" }
+    val finishedAtMillis = performance.requiredLong("finishedAtMillis")
     require(finishedAtMillis > 0) { "Invalid completion timestamp" }
 
-    val setJson = performance.getJSONArray("sets")
+    val setJson = performance.opt("sets") as? JSONArray
+        ?: throw IllegalArgumentException("Set results must be an array")
     require(setJson.length() <= 100_000) { "Too many imported set results" }
     val results = ArrayList<StrengthSession.SetResult>(setJson.length())
     repeat(setJson.length()) { index ->
-      val item = setJson.getJSONObject(index)
+      val item = setJson.opt(index) as? JSONObject
+          ?: throw IllegalArgumentException("Set result must be an object")
       requireKeys(
           item,
           setOf(
               "exerciseIndex", "exerciseStepId", "exerciseName", "setNumber", "status", "repetitions",
               "durationSeconds", "restDurationSeconds", "leftRepetitions", "rightRepetitions", "startedAtMillis",
               "completedAtMillis", "rpe", "painRating", "notes", "exerciseCategory"))
-      val exerciseIndex = item.getInt("exerciseIndex")
+      val exerciseIndex = item.requiredInt("exerciseIndex")
       val exercise = workout.exercises().getOrNull(exerciseIndex)
           ?: throw IllegalArgumentException("Invalid result exercise position")
-      val stepId = item.getString("exerciseStepId")
-      val exerciseName = item.getString("exerciseName")
+      val stepId = item.requiredText("exerciseStepId", 128)
+      val exerciseName = item.requiredText("exerciseName", 256)
       require(stepId == exercise.stepId() && exerciseName == exercise.name()) {
         "Set result does not match its prescription snapshot"
       }
@@ -104,7 +110,7 @@ internal object StrengthSessionExportCodec {
               exerciseIndex = exerciseIndex,
               exerciseStepId = stepId,
               exerciseName = exerciseName,
-              setNumber = item.getInt("setNumber"),
+              setNumber = item.requiredInt("setNumber"),
               repetitions = item.optionalInt("repetitions"),
               durationSeconds = item.optionalInt("durationSeconds"),
               restDurationSeconds = item.optionalInt("restDurationSeconds"),
@@ -115,7 +121,7 @@ internal object StrengthSessionExportCodec {
               rpe = item.optionalDouble("rpe"),
               painRating = item.optionalInt("painRating"),
               notes = item.optionalText("notes"),
-              status = StrengthSession.SetResult.ResultStatus.valueOf(item.getString("status")),
+              status = StrengthSession.SetResult.ResultStatus.valueOf(item.requiredText("status", 16)),
               exerciseCategory = item.optionalText("exerciseCategory"))
       require(result.setNumber in 1..exercise.sets()) { "Invalid set number" }
       require(result.startedAtMillis == null || result.startedAtMillis <= finishedAtMillis) {
@@ -132,7 +138,7 @@ internal object StrengthSessionExportCodec {
     val expectedSetCount = workout.exercises().sumOf { it.sets() }
     require(results.size == expectedSetCount) { "Completed session is missing a set status" }
     val isComplete = results.all { it.status == StrengthSession.SetResult.ResultStatus.COMPLETED }
-    require(performance.getString("completion") == if (isComplete) "complete" else "partial") {
+    require(performance.requiredText("completion", 16) == if (isComplete) "complete" else "partial") {
       "Session completion marker does not match its set results"
     }
 
@@ -152,8 +158,8 @@ internal object StrengthSessionExportCodec {
     return CompletedStrengthSession(validated, finishedAtMillis)
   }
 
-  private fun requiredText(json: JSONObject, key: String, maxLength: Int): String {
-    val value = json.getString(key)
+  private fun requiredString(json: JSONObject, key: String, maxLength: Int): String {
+    val value = json.opt(key) as? String ?: throw IllegalArgumentException("Invalid $key")
     require(value.isNotBlank() && value.length <= maxLength) { "Invalid $key" }
     return value
   }
@@ -162,8 +168,29 @@ internal object StrengthSessionExportCodec {
     require(json.keys().asSequence().all(allowed::contains)) { "Unexpected workout export field" }
   }
 
-  private fun JSONObject.optionalInt(key: String): Int? = if (has(key)) getInt(key) else null
-  private fun JSONObject.optionalLong(key: String): Long? = if (has(key)) getLong(key) else null
-  private fun JSONObject.optionalDouble(key: String): Double? = if (has(key)) getDouble(key) else null
-  private fun JSONObject.optionalText(key: String): String? = if (has(key)) getString(key) else null
+  private fun JSONObject.requiredText(key: String, maxLength: Int): String = requiredString(this, key, maxLength)
+  private fun JSONObject.requiredInt(key: String): Int = exactInteger(opt(key), key).also {
+    require(it in Int.MIN_VALUE..Int.MAX_VALUE) { "Invalid $key" }
+  }.toInt()
+  private fun JSONObject.requiredLong(key: String): Long = exactInteger(opt(key), key)
+  private fun JSONObject.optionalInt(key: String): Int? = if (has(key)) requiredInt(key) else null
+  private fun JSONObject.optionalLong(key: String): Long? = if (has(key)) requiredLong(key) else null
+  private fun JSONObject.optionalDouble(key: String): Double? = if (has(key)) {
+    val value = opt(key) as? Number ?: throw IllegalArgumentException("Invalid $key")
+    value.toDouble().also { require(it.isFinite()) { "Invalid $key" } }
+  } else null
+  private fun JSONObject.optionalText(key: String): String? = if (has(key)) {
+    opt(key) as? String ?: throw IllegalArgumentException("Invalid $key")
+  } else null
+
+  private fun exactInteger(value: Any?, key: String): Long {
+    val number = value as? Number ?: throw IllegalArgumentException("Invalid $key")
+    return try {
+      BigDecimal(number.toString()).toBigIntegerExact().longValueExact()
+    } catch (_: ArithmeticException) {
+      throw IllegalArgumentException("Invalid $key")
+    } catch (_: NumberFormatException) {
+      throw IllegalArgumentException("Invalid $key")
+    }
+  }
 }

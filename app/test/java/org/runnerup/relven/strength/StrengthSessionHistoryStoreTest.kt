@@ -96,6 +96,8 @@ class StrengthSessionHistoryStoreTest {
 
   @Test
   fun portableExportImportPersistsToHistoryAndIsIdempotent() {
+    val active = StrengthSession.start("active-plan", "active-entry", workout)
+    StrengthSessionStore.saveInProgress(context, active)
     val exercise = workout.exercises().single()
     val original = StrengthSession.start("portable-plan", "portable-entry", workout).copy(
         executionId = "portable-run",
@@ -108,13 +110,14 @@ class StrengthSessionHistoryStoreTest {
     val exported = StrengthSessionExportCodec.encode(CompletedStrengthSession(original, 500))
     val imported = StrengthSessionExportCodec.decode(exported)
 
-    StrengthSessionStore.complete(context, imported.state, imported.finishedAtMillis)
-    StrengthSessionStore.complete(context, imported.state, imported.finishedAtMillis)
+    StrengthSessionStore.importCompleted(context, imported.state, imported.finishedAtMillis)
+    StrengthSessionStore.importCompleted(context, imported.state, imported.finishedAtMillis)
 
     val restored = StrengthSessionStore.completedSessions(context).sessions
         .single { it.state.executionId == "portable-run" }
     assertEquals(original.results, restored.state.results)
     assertEquals(500, restored.finishedAtMillis)
+    assertEquals(active, StrengthSessionStore.loadInProgress(context))
   }
 
   @Test

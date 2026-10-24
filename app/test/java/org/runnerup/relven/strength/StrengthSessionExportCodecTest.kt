@@ -47,6 +47,26 @@ class StrengthSessionExportCodecTest {
   }
 
   @Test
+  fun importRejectsValuesWhoseJsonTypesDoNotMatchTheSchema() {
+    val encoded = StrengthSessionExportCodec.encode(completedSession())
+    val numericString = JSONObject(encoded).also {
+      it.getJSONObject("performance").getJSONArray("sets").getJSONObject(0).put("exerciseIndex", "0")
+    }
+    val fractionalSetNumber = JSONObject(encoded).also {
+      it.getJSONObject("performance").getJSONArray("sets").getJSONObject(0).put("setNumber", 1.5)
+    }
+    val textRepetitions = JSONObject(encoded).also {
+      it.getJSONObject("performance").getJSONArray("sets").getJSONObject(0).put("repetitions", "17")
+    }
+
+    listOf(numericString, fractionalSetNumber, textRepetitions).forEach { malformed ->
+      assertThrows(IllegalArgumentException::class.java) {
+        StrengthSessionExportCodec.decode(malformed.toString())
+      }
+    }
+  }
+
+  @Test
   fun explicitZeroIsKeptDistinctFromAnUnknownMeasurement() {
     val state = completedSession().state
     val explicitZero = state.results.first().copy(repetitions = 0, leftRepetitions = null, rightRepetitions = null)

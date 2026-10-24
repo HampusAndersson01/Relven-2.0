@@ -8,7 +8,12 @@
   "properties": {
     "format": { "const": "relven.strength-session" },
     "schemaVersion": { "const": 1 },
-    "prescription": { "$ref": "workout-v3.schema.json" },
+    "prescription": {
+      "allOf": [
+        { "$ref": "workout-v3.schema.json" },
+        { "properties": { "sport": { "enum": ["strength", "prehab"] } }, "required": ["sport"] }
+      ]
+    },
     "performance": {
       "type": "object",
       "additionalProperties": false,

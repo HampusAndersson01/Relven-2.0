@@ -1278,7 +1278,7 @@ class RelvenHomeActivity : FragmentActivity(), GymWorkoutStarter {
       val result = withContext(Dispatchers.IO) {
         runCatching {
           strengthStoreMutex.withLock {
-            StrengthSessionStore.complete(applicationContext, completion.state, completion.finishedAtMillis)
+            StrengthSessionStore.importCompleted(applicationContext, completion.state, completion.finishedAtMillis)
             StrengthSessionStore.completedSessions(applicationContext)
           }
         }
