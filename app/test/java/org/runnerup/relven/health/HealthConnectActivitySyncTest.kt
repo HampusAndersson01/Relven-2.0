@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -55,6 +56,23 @@ class HealthConnectActivitySyncTest {
     assertNull(readRecordedHealthConnectWorkout(ApplicationProvider.getApplicationContext(), database, deleted))
     assertNull(readRecordedHealthConnectWorkout(ApplicationProvider.getApplicationContext(), database, unfinished))
     database.close()
+  }
+
+  @Test
+  fun automaticSyncDoesNotQueuePositiveDurationActivityWithoutEndMarker() {
+    val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    context.getDir("relven-health-connect-outbox", android.content.Context.MODE_PRIVATE).deleteRecursively()
+    HealthConnectExportPreferences.setEnabled(context, true)
+    val database = database()
+    val activityId = insertActivity(
+        database, Instant.parse("2026-10-24T08:00:00Z").epochSecond, deleted = false)
+
+    Api26HealthConnectActivitySyncBridge.onActivitySaved(context, database, activityId)
+
+    assertTrue(HealthConnectExportStore.pending(context).isEmpty())
+    assertNull(readRecordedHealthConnectWorkout(context, database, activityId, requireEndMarker = true))
+    database.close()
+    HealthConnectExportPreferences.setEnabled(context, false)
   }
 
   private fun database(): SQLiteDatabase = SQLiteDatabase.create(null).apply {

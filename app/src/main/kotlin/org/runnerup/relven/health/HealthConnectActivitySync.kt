@@ -51,7 +51,7 @@ internal object Api26HealthConnectActivitySyncBridge {
   @JvmStatic
   fun onActivitySaved(context: Context, database: SQLiteDatabase, activityId: Long) {
     if (!HealthConnectExportPreferences.isEnabled(context)) return
-    val workout = readRecordedHealthConnectWorkout(context, database, activityId) ?: return
+    val workout = readRecordedHealthConnectWorkout(context, database, activityId, requireEndMarker = true) ?: return
     val entry = HealthConnectExportStore.enqueueUpsert(context, workout, System.currentTimeMillis())
     if (entry.operation == HealthConnectExportOperation.UPSERT) {
       HealthConnectExportScheduler.enqueue(context, entry.sessionId)
@@ -70,7 +70,8 @@ internal object Api26HealthConnectActivitySyncBridge {
 internal fun readRecordedHealthConnectWorkout(
     context: Context,
     database: SQLiteDatabase,
-    activityId: Long): RecordedWorkoutForHealthConnect? {
+    activityId: Long,
+    requireEndMarker: Boolean = false): RecordedWorkoutForHealthConnect? {
   val activity = database.query(
       DB.ACTIVITY.TABLE,
       arrayOf(DB.ACTIVITY.START_TIME, DB.ACTIVITY.DISTANCE, DB.ACTIVITY.TIME, DB.ACTIVITY.NAME,
@@ -118,6 +119,7 @@ internal fun readRecordedHealthConnectWorkout(
     }
   }
   val end = recordedEnd?.takeIf { it > start } ?: fallbackEnd
+  if (requireEndMarker && (recordedEnd == null || recordedEnd <= start)) return null
   if (end <= start) return null
   val laps = readTimestampedLaps(database, activityId, start, end, lapForPoint)
   return RecordedWorkoutForHealthConnect(
