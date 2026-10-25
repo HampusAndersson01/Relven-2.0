@@ -99,7 +99,15 @@ class HealthConnectActivitySyncTest {
     val activityId = insertActivity(
         database, Instant.parse("2026-10-24T08:00:00Z").epochSecond, deleted = false)
     val original = readRecordedHealthConnectWorkout(context, database, activityId)!!
-    HealthConnectExportStore.enqueueUpsert(context, original, 1_000L)
+    val published = HealthConnectExportStore.enqueueUpsert(context, original, 1_000L)
+    assertTrue(
+        HealthConnectExportStore.markExported(
+            context,
+            original.sessionId,
+            published.version,
+            setOf(HealthConnectRecordKind.SESSION),
+            emptySet(),
+            2_000L))
     database.update(
         DB.ACTIVITY.TABLE,
         ContentValues().apply { put(DB.ACTIVITY.NAME, "Edited run") },
