@@ -90,6 +90,31 @@ class HealthConnectActivitySyncTest {
     database.close()
   }
 
+  @Test
+  fun editingAnAlreadyPublishedLegacyActivityUpdatesItsExistingExport() {
+    val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    context.getDir("relven-health-connect-outbox", android.content.Context.MODE_PRIVATE).deleteRecursively()
+    HealthConnectExportPreferences.setEnabled(context, true)
+    val database = database()
+    val activityId = insertActivity(
+        database, Instant.parse("2026-10-24T08:00:00Z").epochSecond, deleted = false)
+    val original = readRecordedHealthConnectWorkout(context, database, activityId)!!
+    HealthConnectExportStore.enqueueUpsert(context, original, 1_000L)
+    database.update(
+        DB.ACTIVITY.TABLE,
+        ContentValues().apply { put(DB.ACTIVITY.NAME, "Edited run") },
+        "_id = ?",
+        arrayOf(activityId.toString()))
+
+    Api26HealthConnectActivitySyncBridge.onActivitySaved(context, database, activityId)
+
+    val updated = HealthConnectExportStore.get(context, original.sessionId)!!
+    assertEquals(1L, updated.version)
+    assertEquals("Edited run", HealthConnectWorkoutCodec.decode(updated.payload!!).title)
+    database.close()
+    HealthConnectExportPreferences.setEnabled(context, false)
+  }
+
   private fun database(): SQLiteDatabase = SQLiteDatabase.create(null).apply {
     execSQL("CREATE TABLE ${DB.ACTIVITY.TABLE} (_id INTEGER PRIMARY KEY, ${DB.ACTIVITY.START_TIME} INTEGER, ${DB.ACTIVITY.DISTANCE} REAL, ${DB.ACTIVITY.TIME} INTEGER, ${DB.ACTIVITY.NAME} TEXT, ${DB.ACTIVITY.COMMENT} TEXT, ${DB.ACTIVITY.SPORT} INTEGER, ${DB.ACTIVITY.DELETED} INTEGER)")
     execSQL("CREATE TABLE ${DB.LOCATION.TABLE} (_id INTEGER PRIMARY KEY AUTOINCREMENT, ${DB.LOCATION.ACTIVITY} INTEGER, ${DB.LOCATION.TYPE} INTEGER, ${DB.LOCATION.TIME} INTEGER, ${DB.LOCATION.LATITUDE} REAL, ${DB.LOCATION.LONGITUDE} REAL, ${DB.LOCATION.ALTITUDE} REAL, ${DB.LOCATION.HR} INTEGER, ${DB.LOCATION.SPEED} REAL, ${DB.LOCATION.CADENCE} REAL, ${DB.LOCATION.LAP} INTEGER)")

@@ -72,12 +72,27 @@ internal object Api26HealthConnectActivitySyncBridge {
   @JvmStatic
   fun onActivitySaved(context: Context, database: SQLiteDatabase, activityId: Long) {
     if (!HealthConnectExportPreferences.isEnabled(context)) return
-    val workout = readRecordedHealthConnectWorkout(context, database, activityId, requireFinalized = true) ?: return
+    val completionRequested = ActivityFinalizationStore.isFinalized(database, activityId) &&
+        ActivityFinalizationStore.isHealthConnectExportRequested(database, activityId)
+    val sessionId = "activity-$activityId"
+    val existingExport = HealthConnectExportStore.get(context, sessionId)
+    val alreadyOwnedOrPending = existingExport?.operation == HealthConnectExportOperation.UPSERT ||
+        existingExport?.status in setOf(
+            HealthConnectExportStatus.EXPORTED,
+            HealthConnectExportStatus.EXPORTED_WITH_OMISSIONS)
+    // First-time automatic publication requires the opt-in captured at finalization. An activity
+    // edited later can still update its existing Relven-owned export, including a legacy activity
+    // that predates the finalization sidecar.
+    if (!completionRequested && !alreadyOwnedOrPending) return
+    val workout = readRecordedHealthConnectWorkout(
+        context, database, activityId, requireFinalized = completionRequested) ?: return
     val entry = HealthConnectExportStore.enqueueUpsert(context, workout, System.currentTimeMillis())
     if (entry.operation == HealthConnectExportOperation.UPSERT) {
       if (!HealthConnectExportScheduler.enqueue(context, entry.sessionId)) return
-      check(ActivityFinalizationStore.markHealthConnectExportQueued(database, activityId)) {
-        "Could not record the queued Health Connect activity"
+      if (completionRequested) {
+        check(ActivityFinalizationStore.markHealthConnectExportQueued(database, activityId)) {
+          "Could not record the queued Health Connect activity"
+        }
       }
     }
   }
