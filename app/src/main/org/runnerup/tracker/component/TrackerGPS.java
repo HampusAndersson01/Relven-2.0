@@ -219,8 +219,7 @@ public class TrackerGPS extends DefaultTrackerComponent implements TickListener 
   }
 
   public boolean isGpsProviderAvailable() {
-    LocationManager manager =
-        ContextCompat.getSystemService(tracker, LocationManager.class);
+    LocationManager manager = ContextCompat.getSystemService(tracker, LocationManager.class);
     if (manager == null) return false;
     try {
       return LocationManagerCompat.hasProvider(manager, GPS_PROVIDER);
@@ -230,8 +229,7 @@ public class TrackerGPS extends DefaultTrackerComponent implements TickListener 
   }
 
   public boolean isGpsProviderEnabled() {
-    LocationManager manager =
-        ContextCompat.getSystemService(tracker, LocationManager.class);
+    LocationManager manager = ContextCompat.getSystemService(tracker, LocationManager.class);
     if (manager == null) return false;
     try {
       return manager.isProviderEnabled(GPS_PROVIDER);
