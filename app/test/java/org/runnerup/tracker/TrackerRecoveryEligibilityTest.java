@@ -81,7 +81,7 @@ public class TrackerRecoveryEligibilityTest {
   }
 
   @Test
-  public void activityWithPersistedEndMarkerIsNotRecoverable() {
+  public void activityWithPersistedFinalizationMarkerIsNotRecoverable() {
     SQLiteDatabase database = createActivityDatabase();
     try {
       database.execSQL(
@@ -89,20 +89,13 @@ public class TrackerRecoveryEligibilityTest {
               + Constants.DB.ACTIVITY.TABLE
               + " (_id, "
               + Constants.DB.ACTIVITY.TIME
-              + ", deleted) VALUES (81, 64, 0)");
-      database.execSQL(
-          "INSERT INTO "
-              + Constants.DB.LOCATION.TABLE
-              + " ("
-              + Constants.DB.LOCATION.ACTIVITY
-              + ", "
-              + Constants.DB.LOCATION.TYPE
-              + ") VALUES (81, "
-              + Constants.DB.LOCATION.TYPE_END
-              + ")");
+              + ", deleted) VALUES (82, 64, 0)");
+      ActivityFinalizationStore.markFinalized(database, 82, 10_000L, false);
 
-      try (Cursor cursor = queryActivity(database, 81)) {
-        assertFalse(Tracker.isRecoverableActivity(cursor, true));
+      try (Cursor cursor = queryActivity(database, 82)) {
+        assertFalse(
+            Tracker.isRecoverableActivity(
+                cursor, ActivityFinalizationStore.isFinalized(database, 82)));
       }
     } finally {
       database.close();
@@ -138,6 +131,7 @@ public class TrackerRecoveryEligibilityTest {
             + " INTEGER, "
             + Constants.DB.LOCATION.TYPE
             + " INTEGER)");
+    ActivityFinalizationStore.ensureSchema(database);
     return database;
   }
 }

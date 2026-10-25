@@ -754,25 +754,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
       return;
     }
     handler.removeCallbacks(checkpointRunnable);
-    boolean terminalLocationPersisted = persistEndMarker();
-    boolean activityPersisted;
-
-    if (save) {
-      activityPersisted = saveActivity(manualDistance) > 0;
-    } else {
-      ContentValues tmp = new ContentValues();
-      tmp.put("deleted", 1);
-      String[] key = {Long.toString(mActivityId)};
-
-      if (mDB == null) {
-        Log.e("Tracker", "completeActivity called but mDB is null");
-        activityPersisted = false;
-      } else {
-        activityPersisted = mDB.update(DB.ACTIVITY.TABLE, tmp, "_id = ?", key) > 0;
-      }
-    }
-
-    if (!terminalLocationPersisted || !activityPersisted) {
+    if (!persistTerminalActivity(save, manualDistance)) {
       activityCompletionGate.cancelCompletion();
       Log.e("Tracker", "Unable to persist final workout state; keeping it available for retry");
       handler.post(checkpointRunnable);
@@ -854,27 +836,51 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     }
   }
 
-  private boolean persistEndMarker() {
-    if (hasPersistedEndMarker()) return true;
+  private boolean persistTerminalActivity(boolean save, Double manualDistance) {
     if (mDB == null || mActivityId <= 0) return false;
-    setNextLocationType(DB.LOCATION.TYPE_END);
+    boolean persisted = false;
+    boolean transactionStarted = false;
+    try {
+      mDB.beginTransaction();
+      transactionStarted = true;
+      if (save) {
+        if (!persistEndLocationIfAvailable() || saveActivity(manualDistance) <= 0) return false;
+        if (!ActivityFinalizationStore.markFinalized(
+            mDB,
+            mActivityId,
+            System.currentTimeMillis(),
+            HealthConnectActivitySync.isAutomaticExportEnabled(this))) return false;
+      } else {
+        ContentValues deleted = new ContentValues();
+        deleted.put("deleted", 1);
+        String[] key = {Long.toString(mActivityId)};
+        if (mDB.update(DB.ACTIVITY.TABLE, deleted, "_id = ?", key) <= 0) return false;
+      }
+      mDB.setTransactionSuccessful();
+      persisted = true;
+    } catch (RuntimeException exception) {
+      Log.e("Tracker", "Unable to commit final workout data", exception);
+    } finally {
+      if (transactionStarted) {
+        try {
+          mDB.endTransaction();
+        } catch (RuntimeException exception) {
+          Log.e("Tracker", "Unable to finish final workout transaction", exception);
+          persisted = false;
+        }
+      }
+    }
+    return persisted;
+  }
+
+  private boolean persistEndLocationIfAvailable() {
     Location lastActiveLocation =
         mLastLocationStarted != null ? mLastLocationStarted : mLastLocation;
-    if (lastActiveLocation != null) {
-      internalOnLocationChanged(lastActiveLocation);
-      if (hasPersistedEndMarker()) return true;
-    }
-
-    // Strength and no-GPS activities still need a durable terminal marker, without inventing a
-    // coordinate that could be mistaken for part of a recorded route.
-    ContentValues marker = mDBWriter == null ? new ContentValues() : mDBWriter.getKey();
-    if (marker == null) marker = new ContentValues();
-    marker.put(DB.LOCATION.ACTIVITY, mActivityId);
-    marker.put(DB.LOCATION.TYPE, DB.LOCATION.TYPE_END);
-    marker.put(DB.LOCATION.TIME, System.currentTimeMillis());
-    marker.put(DB.LOCATION.ELAPSED, getTimeMs());
-    marker.put(DB.LOCATION.DISTANCE, mElapsedDistance);
-    return mDB.insert(DB.LOCATION.TABLE, null, marker) > 0;
+    if (lastActiveLocation == null) return true;
+    if (hasPersistedEndMarker()) return true;
+    setNextLocationType(DB.LOCATION.TYPE_END);
+    internalOnLocationChanged(lastActiveLocation);
+    return hasPersistedEndMarker();
   }
 
   private void setNextLocationType(int newType) {
@@ -1250,19 +1256,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
             null,
             null,
             null)) {
-      if (!isRecoverableActivity(cursor)) return false;
-      try (Cursor endMarker =
-          mDB.query(
-              DB.LOCATION.TABLE,
-              new String[] {"_id"},
-              DB.LOCATION.ACTIVITY + " = ? AND " + DB.LOCATION.TYPE + " = ?",
-              new String[] {Long.toString(activityId), Integer.toString(DB.LOCATION.TYPE_END)},
-              null,
-              null,
-              null,
-              "1")) {
-        return isRecoverableActivity(cursor, endMarker.moveToFirst());
-      }
+      return isRecoverableActivity(cursor, ActivityFinalizationStore.isFinalized(mDB, activityId));
     } catch (IllegalStateException exception) {
       Log.e("Tracker", "Unable to validate active workout activity", exception);
       return false;
@@ -1270,14 +1264,11 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
   }
 
   static boolean isRecoverableActivity(Cursor cursor) {
-    return isRecoverableActivity(cursor, false);
+    return cursor != null && cursor.moveToFirst() && cursor.getInt(0) == 0;
   }
 
-  static boolean isRecoverableActivity(Cursor cursor, boolean hasPersistedEndMarker) {
-    return !hasPersistedEndMarker
-        && cursor != null
-        && cursor.moveToFirst()
-        && cursor.getInt(0) == 0;
+  static boolean isRecoverableActivity(Cursor cursor, boolean finalized) {
+    return !finalized && isRecoverableActivity(cursor);
   }
 
   private void restorePersistedLocationState(ActiveWorkoutCheckpoint checkpoint) {

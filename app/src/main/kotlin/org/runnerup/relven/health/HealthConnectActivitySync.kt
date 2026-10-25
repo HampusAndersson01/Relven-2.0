@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import org.runnerup.common.util.Constants.DB
 import org.runnerup.workout.Sport
+import org.runnerup.tracker.ActivityFinalizationStore
 import java.time.Instant
 
 /** Safe, non-blocking entry point for legacy RunnerUp Java lifecycle and history actions. */
@@ -23,6 +24,26 @@ object HealthConnectActivitySync {
   @JvmStatic
   fun onActivityDeleted(context: Context, activityId: Long) {
     invoke(context, "onActivityDeleted", null, activityId)
+  }
+
+  @JvmStatic
+  fun isAutomaticExportEnabled(context: Context): Boolean =
+      HealthConnectExportPreferences.isEnabled(context)
+
+  @JvmStatic
+  fun reconcilePending(context: Context, database: SQLiteDatabase) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    try {
+      val target = Class.forName(BRIDGE)
+      target.getMethod("reconcilePending", Context::class.java, SQLiteDatabase::class.java)
+          .invoke(null, context.applicationContext, database)
+    } catch (error: ReflectiveOperationException) {
+      Log.w(TAG, "Health Connect completion reconciliation was unavailable", error)
+    } catch (error: LinkageError) {
+      Log.w(TAG, "Health Connect completion reconciliation could not load", error)
+    } catch (error: RuntimeException) {
+      Log.w(TAG, "Could not reconcile completed Health Connect activities", error)
+    }
   }
 
   private fun invoke(context: Context, method: String, database: SQLiteDatabase?, activityId: Long) {
@@ -51,10 +72,21 @@ internal object Api26HealthConnectActivitySyncBridge {
   @JvmStatic
   fun onActivitySaved(context: Context, database: SQLiteDatabase, activityId: Long) {
     if (!HealthConnectExportPreferences.isEnabled(context)) return
-    val workout = readRecordedHealthConnectWorkout(context, database, activityId, requireEndMarker = true) ?: return
+    val workout = readRecordedHealthConnectWorkout(context, database, activityId, requireFinalized = true) ?: return
     val entry = HealthConnectExportStore.enqueueUpsert(context, workout, System.currentTimeMillis())
     if (entry.operation == HealthConnectExportOperation.UPSERT) {
-      HealthConnectExportScheduler.enqueue(context, entry.sessionId)
+      if (!HealthConnectExportScheduler.enqueue(context, entry.sessionId)) return
+      check(ActivityFinalizationStore.markHealthConnectExportQueued(database, activityId)) {
+        "Could not record the queued Health Connect activity"
+      }
+    }
+  }
+
+  @JvmStatic
+  fun reconcilePending(context: Context, database: SQLiteDatabase) {
+    if (!HealthConnectExportPreferences.isEnabled(context)) return
+    ActivityFinalizationStore.pendingHealthConnectExports(database).forEach { activityId ->
+      onActivitySaved(context, database, activityId)
     }
   }
 
@@ -71,7 +103,9 @@ internal fun readRecordedHealthConnectWorkout(
     context: Context,
     database: SQLiteDatabase,
     activityId: Long,
-    requireEndMarker: Boolean = false): RecordedWorkoutForHealthConnect? {
+    requireFinalized: Boolean = false): RecordedWorkoutForHealthConnect? {
+  if (requireFinalized && (!ActivityFinalizationStore.isFinalized(database, activityId) ||
+          !ActivityFinalizationStore.isHealthConnectExportRequested(database, activityId))) return null
   val activity = database.query(
       DB.ACTIVITY.TABLE,
       arrayOf(DB.ACTIVITY.START_TIME, DB.ACTIVITY.DISTANCE, DB.ACTIVITY.TIME, DB.ACTIVITY.NAME,
@@ -119,7 +153,6 @@ internal fun readRecordedHealthConnectWorkout(
     }
   }
   val end = recordedEnd?.takeIf { it > start } ?: fallbackEnd
-  if (requireEndMarker && (recordedEnd == null || recordedEnd <= start)) return null
   if (end <= start) return null
   val laps = readTimestampedLaps(database, activityId, start, end, lapForPoint)
   return RecordedWorkoutForHealthConnect(
