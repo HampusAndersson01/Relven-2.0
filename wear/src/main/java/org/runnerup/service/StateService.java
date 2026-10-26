@@ -91,6 +91,7 @@ public class StateService extends Service
   private int telemetryRetryAttempt;
   private int telemetrySessionCursor;
   private boolean telemetrySendInFlight;
+  private boolean telemetryClockSyncWaited;
   private final Runnable telemetryRetry = this::retryPendingWorkoutTelemetry;
   private final BroadcastReceiver telemetryAvailableReceiver =
       new BroadcastReceiver() {
@@ -107,6 +108,8 @@ public class StateService extends Service
   private final Runnable strengthResultRetry = this::retryPendingStrengthResult;
   private long clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
   private long wallClockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+  private long wallClockAnchorWatchElapsedRealtimeNanos = -1L;
+  private long wallClockAnchorWatchWallTimeMillis = -1L;
   private WorkoutSessionProtocol.WallClockOffset watchWallClockOffset;
   private String pendingClockRequestId;
   private long pendingClockRequestSentAtElapsedRealtimeMs = -1L;
@@ -450,6 +453,8 @@ public class StateService extends Service
       if (wallClockOffset.isValid()) {
         watchWallClockOffset = wallClockOffset;
         wallClockSampleReceivedAtWatchElapsedRealtimeMs = watchReceivedAt;
+        wallClockAnchorWatchElapsedRealtimeNanos = watchReceivedAt * 1_000_000L;
+        wallClockAnchorWatchWallTimeMillis = watchReceivedWallTimeMillis;
       }
       pendingClockRequestId = null;
       pendingClockRequestSentAtElapsedRealtimeMs = -1L;
@@ -458,6 +463,11 @@ public class StateService extends Service
       clockRequestTimeout = null;
       if (offset.isValid() && wallClockOffset.isValid()) retryPendingPhoneProjection();
       else retryPendingProjectionAfterClockFailure();
+      if (wallClockOffset.isValid()) {
+        telemetryClockSyncWaited = false;
+        handler.removeCallbacks(telemetryRetry);
+        retryPendingWorkoutTelemetry();
+      }
     } catch (java.io.IOException malformed) {
       Log.w(TAG, "Ignoring invalid clock synchronization reply", malformed);
     }
@@ -708,6 +718,24 @@ public class StateService extends Service
         || checkConnection() != null
         || workoutTelemetryOutbox == null
         || telemetrySendInFlight) return;
+    long nowElapsed = android.os.SystemClock.elapsedRealtime();
+    boolean hasFreshClockAnchor = hasFreshWallClockOffset(nowElapsed);
+    if (!hasFreshClockAnchor && !telemetryClockSyncWaited) {
+      telemetryClockSyncWaited = true;
+      requestClockSync();
+      handler.removeCallbacks(telemetryRetry);
+      handler.postDelayed(telemetryRetry, 5_500L);
+      return;
+    }
+    telemetryClockSyncWaited = false;
+    final WorkoutTelemetryProtocol.ClockAnchor clockAnchor =
+        hasFreshClockAnchor
+            ? new WorkoutTelemetryProtocol.ClockAnchor(
+                watchWallClockOffset.getWatchMinusPhoneOffsetMs(),
+                wallClockAnchorWatchElapsedRealtimeNanos,
+                wallClockAnchorWatchWallTimeMillis,
+                watchWallClockOffset.getRoundTripTimeMs())
+            : null;
     telemetrySendInFlight = true;
     final String targetNode = phoneNode;
     telemetryExecutor.execute(
@@ -725,6 +753,10 @@ public class StateService extends Service
                       sessions.get(index),
                       WorkoutTelemetryProtocol.MAX_BATCH_SAMPLES,
                       WorkoutTelemetryProtocol.MAX_PAYLOAD_BYTES);
+              if (batch != null && clockAnchor != null) {
+                batch =
+                    new WorkoutTelemetryProtocol.Batch(batch.sessionId, batch.samples, clockAnchor);
+              }
               if (batch != null) payload = WorkoutTelemetryProtocol.encodeBatch(batch);
             }
           } catch (java.io.IOException | RuntimeException failure) {

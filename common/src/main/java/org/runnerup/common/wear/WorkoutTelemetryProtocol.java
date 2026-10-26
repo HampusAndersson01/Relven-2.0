@@ -18,6 +18,7 @@ public final class WorkoutTelemetryProtocol {
   private static final int BATCH_MAGIC = 0x57544231; // WTB1
   private static final int ACK_MAGIC = 0x57544131; // WTA1
   private static final int VERSION = 1;
+  private static final int BATCH_VERSION = 2;
   private static final int LOCATION = 1;
   private static final int ACCURACY = 2;
   private static final int ALTITUDE = 4;
@@ -117,8 +118,13 @@ public final class WorkoutTelemetryProtocol {
   public static final class Batch {
     public final String sessionId;
     public final List<Sample> samples;
+    public final ClockAnchor clockAnchor;
 
     public Batch(String sessionId, List<Sample> samples) {
+      this(sessionId, samples, null);
+    }
+
+    public Batch(String sessionId, List<Sample> samples, ClockAnchor clockAnchor) {
       validateSessionId(sessionId);
       if (samples == null || samples.isEmpty() || samples.size() > MAX_BATCH_SAMPLES) {
         throw new IllegalArgumentException("Invalid telemetry batch size");
@@ -136,18 +142,92 @@ public final class WorkoutTelemetryProtocol {
       }
       this.sessionId = sessionId;
       this.samples = Collections.unmodifiableList(copy);
+      this.clockAnchor = clockAnchor;
     }
 
     @Override
     public boolean equals(Object value) {
       return value instanceof Batch
           && sessionId.equals(((Batch) value).sessionId)
-          && samples.equals(((Batch) value).samples);
+          && samples.equals(((Batch) value).samples)
+          && Objects.equals(clockAnchor, ((Batch) value).clockAnchor);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(sessionId, samples);
+      return Objects.hash(sessionId, samples, clockAnchor);
+    }
+  }
+
+  /** A bounded watch-to-phone wall-clock correction tied to one watch boot epoch. */
+  public static final class ClockAnchor {
+    private static final long MAX_ABSOLUTE_OFFSET_MILLIS = 86_400_000L;
+    private static final long MAX_ROUND_TRIP_MILLIS = 2_000L;
+    private static final long MAX_SAMPLE_AGE_MILLIS = 21_600_000L;
+    private static final long BOOT_ORIGIN_TOLERANCE_MILLIS = 120_000L;
+
+    public final long watchMinusPhoneWallOffsetMillis;
+    public final long watchElapsedRealtimeNanos;
+    public final long watchWallTimeMillis;
+    public final long roundTripTimeMillis;
+
+    public ClockAnchor(
+        long watchMinusPhoneWallOffsetMillis,
+        long watchElapsedRealtimeNanos,
+        long watchWallTimeMillis,
+        long roundTripTimeMillis) {
+      if (watchMinusPhoneWallOffsetMillis < -MAX_ABSOLUTE_OFFSET_MILLIS
+          || watchMinusPhoneWallOffsetMillis > MAX_ABSOLUTE_OFFSET_MILLIS
+          || watchElapsedRealtimeNanos < 0
+          || watchWallTimeMillis <= 0
+          || roundTripTimeMillis < 0
+          || roundTripTimeMillis > MAX_ROUND_TRIP_MILLIS) {
+        throw new IllegalArgumentException("Invalid telemetry clock anchor");
+      }
+      this.watchMinusPhoneWallOffsetMillis = watchMinusPhoneWallOffsetMillis;
+      this.watchElapsedRealtimeNanos = watchElapsedRealtimeNanos;
+      this.watchWallTimeMillis = watchWallTimeMillis;
+      this.roundTripTimeMillis = roundTripTimeMillis;
+    }
+
+    /** Returns a phone-wall timestamp only when the sample and anchor share a plausible boot. */
+    public Long phoneAlignedWallTimeMillis(Sample sample) {
+      if (sample == null) return null;
+      try {
+        long sampleElapsedMillis = sample.watchElapsedRealtimeNanos / 1_000_000L;
+        long anchorElapsedMillis = watchElapsedRealtimeNanos / 1_000_000L;
+        long age = Math.subtractExact(sampleElapsedMillis, anchorElapsedMillis);
+        if (age < -MAX_SAMPLE_AGE_MILLIS || age > MAX_SAMPLE_AGE_MILLIS) return null;
+        long sampleBootOrigin = Math.subtractExact(sample.wallTimeMillis, sampleElapsedMillis);
+        long anchorBootOrigin = Math.subtractExact(watchWallTimeMillis, anchorElapsedMillis);
+        long originDifference = Math.subtractExact(sampleBootOrigin, anchorBootOrigin);
+        if (originDifference < -BOOT_ORIGIN_TOLERANCE_MILLIS
+            || originDifference > BOOT_ORIGIN_TOLERANCE_MILLIS) return null;
+        long phoneWallTime =
+            Math.subtractExact(sample.wallTimeMillis, watchMinusPhoneWallOffsetMillis);
+        return phoneWallTime > 0 ? phoneWallTime : null;
+      } catch (ArithmeticException overflow) {
+        return null;
+      }
+    }
+
+    @Override
+    public boolean equals(Object value) {
+      if (!(value instanceof ClockAnchor)) return false;
+      ClockAnchor other = (ClockAnchor) value;
+      return watchMinusPhoneWallOffsetMillis == other.watchMinusPhoneWallOffsetMillis
+          && watchElapsedRealtimeNanos == other.watchElapsedRealtimeNanos
+          && watchWallTimeMillis == other.watchWallTimeMillis
+          && roundTripTimeMillis == other.roundTripTimeMillis;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(
+          watchMinusPhoneWallOffsetMillis,
+          watchElapsedRealtimeNanos,
+          watchWallTimeMillis,
+          roundTripTimeMillis);
     }
   }
 
@@ -180,8 +260,15 @@ public final class WorkoutTelemetryProtocol {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     try (DataOutputStream output = new DataOutputStream(bytes)) {
       output.writeInt(BATCH_MAGIC);
-      output.writeByte(VERSION);
+      output.writeByte(BATCH_VERSION);
       output.writeUTF(batch.sessionId);
+      output.writeBoolean(batch.clockAnchor != null);
+      if (batch.clockAnchor != null) {
+        output.writeLong(batch.clockAnchor.watchMinusPhoneWallOffsetMillis);
+        output.writeLong(batch.clockAnchor.watchElapsedRealtimeNanos);
+        output.writeLong(batch.clockAnchor.watchWallTimeMillis);
+        output.writeLong(batch.clockAnchor.roundTripTimeMillis);
+      }
       output.writeByte(batch.samples.size());
       for (Sample sample : batch.samples) writeSample(output, sample);
     }
@@ -195,16 +282,29 @@ public final class WorkoutTelemetryProtocol {
       throw new IOException("Invalid telemetry payload size");
     }
     try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
-      if (input.readInt() != BATCH_MAGIC || input.readUnsignedByte() != VERSION) {
+      if (input.readInt() != BATCH_MAGIC) {
         throw new IOException("Unsupported telemetry protocol");
       }
+      int version = input.readUnsignedByte();
+      if (version != VERSION && version != BATCH_VERSION)
+        throw new IOException("Unsupported telemetry protocol");
       String session = input.readUTF();
+      ClockAnchor anchor = null;
+      if (version >= BATCH_VERSION && input.readBoolean()) {
+        try {
+          anchor =
+              new ClockAnchor(
+                  input.readLong(), input.readLong(), input.readLong(), input.readLong());
+        } catch (IllegalArgumentException invalidAnchor) {
+          throw new IOException("Invalid telemetry clock anchor", invalidAnchor);
+        }
+      }
       int count = input.readUnsignedByte();
       if (count == 0 || count > MAX_BATCH_SAMPLES) throw new IOException("Invalid telemetry count");
       List<Sample> samples = new ArrayList<>(count);
       for (int i = 0; i < count; i++) samples.add(readSample(input, session));
       if (input.available() != 0) throw new IOException("Trailing telemetry bytes");
-      return new Batch(session, samples);
+      return new Batch(session, samples, anchor);
     } catch (IllegalArgumentException error) {
       throw new IOException("Invalid telemetry payload", error);
     }

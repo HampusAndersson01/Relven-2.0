@@ -59,7 +59,24 @@ class WorkoutTelemetryRouteReconciler(private val database: SQLiteDatabase) {
         if (batch.samples.size != 1 || batch.samples.single().sequence != pending.sequence) {
           return Result(false, inserted, enriched, covered, ignored, updatedActivities)
         }
-        val disposition = reconcileOne(pending, batch.samples.single())
+        val storedSample = batch.samples.single()
+        val alignedWallTime = batch.clockAnchor?.phoneAlignedWallTimeMillis(storedSample)
+        val sample =
+            if (alignedWallTime == null) storedSample
+            else {
+              WorkoutTelemetryProtocol.Sample(
+                  storedSample.sessionId,
+                  storedSample.sequence,
+                  storedSample.watchElapsedRealtimeNanos,
+                  alignedWallTime,
+                  storedSample.latitude,
+                  storedSample.longitude,
+                  storedSample.horizontalAccuracyMeters,
+                  storedSample.altitudeMeters,
+                  storedSample.speedMetersPerSecond,
+                  storedSample.heartRateBpm)
+            }
+        val disposition = reconcileOne(pending, sample)
             ?: return Result(false, inserted, enriched, covered, ignored, updatedActivities)
         when (disposition) {
           Disposition.INSERTED -> inserted++

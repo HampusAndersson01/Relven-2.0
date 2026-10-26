@@ -97,22 +97,23 @@ class WorkoutTelemetryInboxStore(private val database: SQLiteDatabase) {
       committedThrough = association.second
       var appended = false
       for (sample in batch.samples) {
-        if (sample.wallTimeMillis < sessionStart - PRE_SESSION_TOLERANCE_MILLIS ||
-            sample.wallTimeMillis > nowMillis + FUTURE_TOLERANCE_MILLIS) {
-          return CommitResult(CommitStatus.INVALID_TIME, committedThrough)
-        }
-        val encoded = encodeSample(sample)
         if (sample.sequence <= committedThrough) {
           val stored = readSample(sample.sessionId, sample.sequence)
               ?: return CommitResult(CommitStatus.CONFLICT, committedThrough)
-          if (!stored.contentEquals(encoded)) {
+          if (!matchesStoredSample(stored, sample)) {
             return CommitResult(CommitStatus.CONFLICT, committedThrough)
           }
         } else {
           if (sample.sequence != committedThrough + 1L) {
             return CommitResult(CommitStatus.GAP, committedThrough)
           }
-          insertSample(sample.sessionId, sample.sequence, encoded)
+          val alignedWallTime = batch.clockAnchor?.phoneAlignedWallTimeMillis(sample)
+              ?: sample.wallTimeMillis
+          if (alignedWallTime < sessionStart - PRE_SESSION_TOLERANCE_MILLIS ||
+              alignedWallTime > nowMillis + FUTURE_TOLERANCE_MILLIS) {
+            return CommitResult(CommitStatus.INVALID_TIME, committedThrough)
+          }
+          insertSample(sample.sessionId, sample.sequence, encodeSample(sample, batch.clockAnchor))
           committedThrough = sample.sequence
           appended = true
         }
@@ -141,7 +142,7 @@ class WorkoutTelemetryInboxStore(private val database: SQLiteDatabase) {
 
   fun containsIdenticalSample(sample: WorkoutTelemetryProtocol.Sample): Boolean {
     val stored = readSample(sample.sessionId, sample.sequence) ?: return false
-    return runCatching { stored.contentEquals(encodeSample(sample)) }.getOrDefault(false)
+    return matchesStoredSample(stored, sample)
   }
 
   private fun readSample(sessionId: String, sequence: Long): ByteArray? =
@@ -168,9 +169,20 @@ class WorkoutTelemetryInboxStore(private val database: SQLiteDatabase) {
     check(database.update(SESSION_TABLE, values, "$SESSION_ID = ?", arrayOf(sessionId)) == 1)
   }
 
-  private fun encodeSample(sample: WorkoutTelemetryProtocol.Sample): ByteArray =
+  private fun encodeSample(
+      sample: WorkoutTelemetryProtocol.Sample,
+      clockAnchor: WorkoutTelemetryProtocol.ClockAnchor? = null
+  ): ByteArray =
       WorkoutTelemetryProtocol.encodeBatch(
-          WorkoutTelemetryProtocol.Batch(sample.sessionId, listOf(sample)))
+          WorkoutTelemetryProtocol.Batch(sample.sessionId, listOf(sample), clockAnchor))
+
+  private fun matchesStoredSample(
+      encodedBatch: ByteArray,
+      sample: WorkoutTelemetryProtocol.Sample
+  ): Boolean =
+      runCatching {
+        WorkoutTelemetryProtocol.decodeBatch(encodedBatch).samples.singleOrNull() == sample
+      }.getOrDefault(false)
 
   companion object {
     private const val SESSION_TABLE = "relven_wear_telemetry_session"

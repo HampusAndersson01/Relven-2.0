@@ -1,6 +1,9 @@
 package org.runnerup.relven.telemetry
 
 import android.database.sqlite.SQLiteDatabase
+import android.content.ContentValues
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -196,16 +199,55 @@ class WorkoutTelemetryInboxStoreTest {
     assertFalse(store.containsIdenticalSample(sample(1, latitude = 59.34)))
   }
 
+  @Test
+  fun duplicateSamplesRemainIdempotentWhenRetryClockAnchorChanges() {
+    store.associateActivity(SESSION, ACTIVITY_ID, SESSION_START)
+    val skewedSample = sample(
+        1,
+        wallTimeMillis = SESSION_START + 601_000,
+        elapsedRealtimeNanos = 1_000_000_000L)
+    val firstAnchor = clockAnchor(offsetMillis = 600_000, syncElapsedMillis = 60_000)
+    val retryAnchor = clockAnchor(offsetMillis = 3_600_000, syncElapsedMillis = 61_000)
+
+    assertEquals(
+        WorkoutTelemetryInboxStore.CommitStatus.COMMITTED,
+        store.commitBatch(batch(skewedSample, firstAnchor), NOW).status)
+    assertEquals(
+        WorkoutTelemetryInboxStore.CommitStatus.DUPLICATE,
+        store.commitBatch(batch(skewedSample, retryAnchor), NOW).status)
+  }
+
+  @Test
+  fun v1InboxPayloadRemainsIdempotentAfterUpgrade() {
+    store.associateActivity(SESSION, ACTIVITY_ID, SESSION_START)
+    val original = sample(1)
+    assertEquals(
+        WorkoutTelemetryInboxStore.CommitStatus.COMMITTED,
+        store.commitBatch(batch(original), NOW).status)
+    val legacyPayload = encodeLegacyBatch(original)
+    database.update(
+        "relven_wear_telemetry_sample",
+        ContentValues().apply { put("payload", legacyPayload) },
+        "session_id = ? AND sequence = ?",
+        arrayOf(SESSION, "1"))
+
+    val replay = store.commitBatch(batch(original), NOW)
+
+    assertEquals(WorkoutTelemetryInboxStore.CommitStatus.DUPLICATE, replay.status)
+    assertEquals(1, store.sampleCount(SESSION))
+  }
+
   private fun sample(
       sequence: Long,
       latitude: Double = 59.33,
       wallTimeMillis: Long = SESSION_START + sequence * 1_000,
+      elapsedRealtimeNanos: Long = sequence * 1_000_000_000L,
       sessionId: String = SESSION
   ) =
       WorkoutTelemetryProtocol.Sample(
           sessionId,
           sequence,
-          sequence * 1_000_000_000,
+          elapsedRealtimeNanos,
           wallTimeMillis,
           latitude,
           18.06,
@@ -216,6 +258,46 @@ class WorkoutTelemetryInboxStoreTest {
 
   private fun batch(vararg samples: WorkoutTelemetryProtocol.Sample) =
       WorkoutTelemetryProtocol.Batch(SESSION, samples.toList())
+
+  private fun batch(
+      sample: WorkoutTelemetryProtocol.Sample,
+      anchor: WorkoutTelemetryProtocol.ClockAnchor
+  ) = WorkoutTelemetryProtocol.Batch(SESSION, listOf(sample), anchor)
+
+  private fun clockAnchor(offsetMillis: Long, syncElapsedMillis: Long) =
+      WorkoutTelemetryProtocol.ClockAnchor(
+          offsetMillis,
+          syncElapsedMillis * 1_000_000L,
+          SESSION_START + offsetMillis + syncElapsedMillis,
+          50)
+
+  private fun encodeLegacyBatch(sample: WorkoutTelemetryProtocol.Sample): ByteArray {
+    val bytes = ByteArrayOutputStream()
+    DataOutputStream(bytes).use { output ->
+      output.writeInt(0x57544231)
+      output.writeByte(1)
+      output.writeUTF(sample.sessionId)
+      output.writeByte(1)
+      output.writeLong(sample.sequence)
+      output.writeLong(sample.watchElapsedRealtimeNanos)
+      output.writeLong(sample.wallTimeMillis)
+      val flags = (if (sample.latitude != null) 1 else 0) +
+          (if (sample.horizontalAccuracyMeters != null) 2 else 0) +
+          (if (sample.altitudeMeters != null) 4 else 0) +
+          (if (sample.speedMetersPerSecond != null) 8 else 0) +
+          (if (sample.heartRateBpm != null) 16 else 0)
+      output.writeByte(flags)
+      if (sample.latitude != null) {
+        output.writeDouble(sample.latitude)
+        output.writeDouble(sample.longitude!!)
+      }
+      sample.horizontalAccuracyMeters?.let(output::writeDouble)
+      sample.altitudeMeters?.let(output::writeDouble)
+      sample.speedMetersPerSecond?.let(output::writeDouble)
+      sample.heartRateBpm?.let(output::writeDouble)
+    }
+    return bytes.toByteArray()
+  }
 
   private companion object {
     const val SESSION = "telemetry-session-1"
