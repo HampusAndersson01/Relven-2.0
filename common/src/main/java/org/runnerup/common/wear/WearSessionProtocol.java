@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 
 /** Small bounded protocol envelope for application-level Wear OS requests and acknowledgements. */
 public final class WearSessionProtocol {
-  public static final int CURRENT_VERSION = 2;
+  public static final int CURRENT_VERSION = 4;
   public static final int PING = 1;
   public static final int PONG = 2;
   private static final int MAGIC =

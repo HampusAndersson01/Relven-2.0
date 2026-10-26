@@ -81,6 +81,7 @@ internal fun readActivityRoute(database: SQLiteDatabase, activityId: Long): List
   var previousLatitude: Double? = null
   var previousLongitude: Double? = null
   var previousTime: Long? = null
+  var isActive = true
   var cumulativeDistance = 0.0
   var cumulativeElapsedMillis = 0L
   var timingSegment = 0
@@ -134,6 +135,14 @@ internal fun readActivityRoute(database: SQLiteDatabase, activityId: Long): List
           val persistedDistanceMeters =
               if (cursor.isNull(distanceIndex)) null
               else cursor.getDouble(distanceIndex).takeIf { it.isFinite() && it >= 0.0 }
+          if (type == DB.LOCATION.TYPE_START || type == DB.LOCATION.TYPE_RESUME) {
+            isActive = true
+          }
+          if (type == DB.LOCATION.TYPE_GPS && !isActive) {
+            // A delayed offline pause can arrive after the phone persisted fixes from the pause
+            // interval. Keep those raw rows for audit/recovery, but never display them as route.
+            continue
+          }
           if (type == DB.LOCATION.TYPE_PAUSE || type == DB.LOCATION.TYPE_RESUME) {
             segment++
             timingSegment++
@@ -201,6 +210,9 @@ internal fun readActivityRoute(database: SQLiteDatabase, activityId: Long): List
           previousLatitude = latitude
           previousLongitude = longitude
           previousTime = time
+          if (type == DB.LOCATION.TYPE_PAUSE || type == DB.LOCATION.TYPE_END) {
+            isActive = false
+          }
         }
       }
   return points

@@ -69,7 +69,7 @@ public class PersistentGpsLoggerListener implements Constants {
     }
   }
 
-  public void onLocationChanged(
+  public long onLocationChanged(
       Location arg0,
       Double eleValue,
       Long elapsed,
@@ -135,7 +135,8 @@ public class PersistentGpsLoggerListener implements Constants {
       values.put(DB.LOCATION.TEMPERATURE, temperatureValue);
     }
     if (mDB != null) {
-      mDB.insert(mTable, null, values);
+      return mDB.insert(mTable, null, values);
     }
+    return -1L;
   }
 }

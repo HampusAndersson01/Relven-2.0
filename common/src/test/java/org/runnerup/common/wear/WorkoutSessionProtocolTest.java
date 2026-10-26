@@ -4,6 +4,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.UUID;
 import org.junit.Test;
@@ -36,6 +38,53 @@ public class WorkoutSessionProtocolTest {
   }
 
   @Test
+  public void commandRoundTripPreservesOriginalWallTimeForDelayedControls() throws Exception {
+    WorkoutSessionProtocol.Command command =
+        new WorkoutSessionProtocol.Command(
+            UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(),
+            7L,
+            WorkoutSessionProtocol.Actor.WATCH,
+            WorkoutSessionProtocol.Action.PAUSE,
+            85_000L,
+            0L,
+            1_800_000_085_000L);
+
+    WorkoutSessionProtocol.Command decoded =
+        WorkoutSessionProtocol.decodeCommand(WorkoutSessionProtocol.encodeCommand(command));
+
+    assertEquals(85_000L, decoded.getIssuedAtElapsedRealtimeMs());
+    assertEquals(1_800_000_085_000L, decoded.getIssuedAtWallTimeMillis());
+  }
+
+  @Test
+  public void versionTwoCommandRemainsReadableWithoutWallTime() throws Exception {
+    String sessionId = UUID.randomUUID().toString();
+    String commandId = UUID.randomUUID().toString();
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    try (DataOutputStream output = new DataOutputStream(bytes)) {
+      output.writeInt(0x52575332);
+      output.writeByte(2);
+      output.writeByte(1);
+      output.writeUTF(sessionId);
+      output.writeUTF(commandId);
+      output.writeLong(3L);
+      output.writeByte(WorkoutSessionProtocol.Actor.WATCH.ordinal());
+      output.writeByte(WorkoutSessionProtocol.Action.PAUSE.ordinal());
+      output.writeLong(12_345L);
+      output.writeLong(0L);
+    }
+
+    WorkoutSessionProtocol.Command decoded =
+        WorkoutSessionProtocol.decodeCommand(bytes.toByteArray());
+
+    assertEquals(sessionId, decoded.getSessionId());
+    assertEquals(commandId, decoded.getCommandId());
+    assertEquals(12_345L, decoded.getIssuedAtElapsedRealtimeMs());
+    assertEquals(0L, decoded.getIssuedAtWallTimeMillis());
+  }
+
+  @Test
   public void delayedStartProjectionIsRejectedAfterItsMonotonicDeadline() {
     String sessionId = UUID.randomUUID().toString();
     WorkoutSessionProtocol.Command start =
@@ -65,7 +114,8 @@ public class WorkoutSessionProtocolTest {
               WorkoutSessionProtocol.Actor.WATCH,
               action,
               10_000,
-              action == WorkoutSessionProtocol.Action.START ? 13_000 : 0);
+              action == WorkoutSessionProtocol.Action.START ? 13_000 : 0,
+              1_800_000_010_000L);
 
       WorkoutSessionProtocol.Command projection =
           WorkoutSessionProtocol.rebaseCommandClock(accepted, 20_000, 23_000);
@@ -76,6 +126,7 @@ public class WorkoutSessionProtocolTest {
       assertEquals(accepted.getCommandId(), projection.getCommandId());
       assertEquals(20_000, projection.getIssuedAtElapsedRealtimeMs());
       assertEquals(23_000, projection.getPlannedStartElapsedRealtimeMs());
+      assertEquals(1_800_000_010_000L, projection.getIssuedAtWallTimeMillis());
     }
   }
 
@@ -373,6 +424,42 @@ public class WorkoutSessionProtocolTest {
     assertFalse(
         WorkoutSessionProtocol.estimateWatchInitiatedClockOffset(1_000, 510, 520, 1_005, 250)
             .isValid());
+  }
+
+  @Test
+  public void wearClockProbeCarriesWallTimesAndEstimatesPhoneWallOffset() throws Exception {
+    String requestId = UUID.randomUUID().toString();
+    WearClockSyncProtocol.Request request =
+        WearClockSyncProtocol.decodeRequest(
+            WearClockSyncProtocol.encodeRequest(requestId, 1_000L, 1_700_000_000_000L));
+    assertEquals(1_700_000_000_000L, request.getWatchSentAtWallTimeMillis());
+    WearClockSyncProtocol.Reply reply =
+        WearClockSyncProtocol.decodeReply(
+            WearClockSyncProtocol.encodeReply(
+                requestId,
+                1_000L,
+                1_700_000_000_000L,
+                510L,
+                520L,
+                1_699_999_999_000L,
+                1_699_999_999_010L));
+
+    WorkoutSessionProtocol.WallClockOffset offset =
+        WorkoutSessionProtocol.estimateWatchInitiatedWallClockOffset(
+            reply.getWatchSentAtElapsedRealtimeMs(),
+            reply.getWatchSentAtWallTimeMillis(),
+            reply.getPhoneReceivedAtElapsedRealtimeMs(),
+            reply.getPhoneReceivedAtWallTimeMillis(),
+            reply.getPhoneSentAtElapsedRealtimeMs(),
+            reply.getPhoneSentAtWallTimeMillis(),
+            1_020L,
+            1_700_000_000_020L,
+            250L);
+
+    assertTrue(offset.isValid());
+    assertEquals(1_005L, offset.getWatchMinusPhoneOffsetMs());
+    assertEquals(10L, offset.getRoundTripTimeMs());
+    assertEquals(1_700_000_000_000L, offset.toPhoneWallTime(1_700_000_001_005L));
   }
 
   private static WorkoutSessionProtocol.Command command(

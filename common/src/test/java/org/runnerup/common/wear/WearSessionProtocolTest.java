@@ -152,6 +152,14 @@ public class WearSessionProtocolTest {
     assertFalse(WearSessionProtocol.isSuccessfulHandshake(oldPhoneRequest, newWatchResponse));
     assertEquals(1, newWatchResponse.getRequestedVersion());
     assertEquals(WearSessionProtocol.CURRENT_VERSION, newWatchResponse.getSupportedVersion());
+
+    WearSessionProtocol.Message previousPhoneRequest =
+        WearSessionProtocol.decode(WearSessionProtocol.encodePing("previous", 2));
+    WearSessionProtocol.Message currentWatchResponse =
+        WearSessionProtocol.decode(
+            WearSessionProtocol.respondToPing(WearSessionProtocol.encodePing("previous", 2)));
+    assertFalse(
+        WearSessionProtocol.isSuccessfulHandshake(previousPhoneRequest, currentWatchResponse));
   }
 
   @Test

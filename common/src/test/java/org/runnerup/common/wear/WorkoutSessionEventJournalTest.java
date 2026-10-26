@@ -93,6 +93,48 @@ public class WorkoutSessionEventJournalTest {
   }
 
   @Test
+  public void duplicateEventWithDifferentOriginalWallTimeIsAConflict() {
+    MemoryStorage storage = new MemoryStorage();
+    WorkoutSessionEventJournalStore store = new WorkoutSessionEventJournalStore(storage);
+    WorkoutSessionProtocol.Command start =
+        new WorkoutSessionProtocol.Command(
+            SESSION,
+            "fef77b0a-7012-4dd7-a374-cf7a1dd6f083",
+            1,
+            WorkoutSessionProtocol.Actor.WATCH,
+            WorkoutSessionProtocol.Action.START,
+            1_000L,
+            4_000L,
+            1_800_000_001_000L);
+    WorkoutSessionProtocol.Command pause =
+        new WorkoutSessionProtocol.Command(
+            SESSION,
+            "671a25fc-cdb2-4d62-a3a2-175f2826040b",
+            2,
+            WorkoutSessionProtocol.Actor.WATCH,
+            WorkoutSessionProtocol.Action.PAUSE,
+            5_000L,
+            0L,
+            1_800_000_005_000L);
+    WorkoutSessionProtocol.Command changedTimestamp =
+        new WorkoutSessionProtocol.Command(
+            SESSION,
+            pause.getCommandId(),
+            pause.getSequence(),
+            pause.getActor(),
+            pause.getAction(),
+            pause.getIssuedAtElapsedRealtimeMs(),
+            pause.getPlannedStartElapsedRealtimeMs(),
+            pause.getIssuedAtWallTimeMillis() + 1L);
+    store.append(SESSION, WorkoutSessionProtocol.Actor.WATCH, start);
+    store.append(SESSION, WorkoutSessionProtocol.Actor.WATCH, pause);
+
+    assertEquals(
+        WorkoutSessionEventJournalStore.AppendResult.CONFLICT,
+        store.append(SESSION, WorkoutSessionProtocol.Actor.WATCH, changedTimestamp));
+  }
+
+  @Test
   public void terminalCompletionSurvivesRestartAndRemainsIdempotentUntilAcknowledged() {
     MemoryStorage storage = new MemoryStorage();
     WorkoutSessionEventJournalStore store = new WorkoutSessionEventJournalStore(storage);

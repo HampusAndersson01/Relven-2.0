@@ -69,6 +69,7 @@ import org.runnerup.notification.NotificationState;
 import org.runnerup.notification.NotificationStateManager;
 import org.runnerup.notification.OngoingState;
 import org.runnerup.relven.health.HealthConnectActivitySync;
+import org.runnerup.relven.telemetry.WorkoutSessionRouteBoundaryReconciler;
 import org.runnerup.tracker.component.TrackerCadence;
 import org.runnerup.tracker.component.TrackerComponent;
 import org.runnerup.tracker.component.TrackerComponentCollection;
@@ -133,6 +134,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
   private final ActivityCompletionGate activityCompletionGate = new ActivityCompletionGate();
   private long mElapsedTimeNanos = 0;
   private double mElapsedDistance = 0;
+  private long lastInternalLocationId = -1L;
   private double mHeartbeats = 0;
   private double mHeartbeatNanos = 0; // since we might loose HRM connectivity...
   private long mMaxHR = 0;
@@ -462,12 +464,21 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
   }
 
   public boolean applyWatchSessionAction(String commandId, WorkoutSessionProtocol.Action action) {
+    return applyWatchSessionAction(commandId, action, 0L, 0L);
+  }
+
+  public boolean applyWatchSessionAction(
+      String commandId,
+      WorkoutSessionProtocol.Action action,
+      long issuedAtElapsedRealtimeMs,
+      long issuedAtWallTimeMillis) {
     if (commandId != null && workout != null && workout.hasAppliedWatchSessionCommand(commandId)) {
       if (!Objects.equals(pendingWatchCommandCheckpointId, commandId)) return true;
       if (!persistActiveCheckpoint()) return false;
       pendingWatchCommandCheckpointId = null;
       return true;
     }
+    lastInternalLocationId = -1L;
     boolean previous = applyingWatchSessionCommand;
     applyingWatchSessionCommand = true;
     try {
@@ -493,6 +504,22 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     } finally {
       applyingWatchSessionCommand = previous;
     }
+    long routeBoundaryTimeMillis = issuedAtWallTimeMillis;
+    if (routeBoundaryTimeMillis > 0L
+        && lastInternalLocationId > 0L
+        && (action == WorkoutSessionProtocol.Action.PAUSE
+            || action == WorkoutSessionProtocol.Action.RESUME
+            || action == WorkoutSessionProtocol.Action.FINISH)
+        && new WorkoutSessionRouteBoundaryReconciler(mDB)
+            .backdateBoundary(mActivityId, lastInternalLocationId, routeBoundaryTimeMillis)) {
+      refreshActiveTotalsFromDatabase();
+      if (action == WorkoutSessionProtocol.Action.RESUME && issuedAtElapsedRealtimeMs > 0L) {
+        long activeSinceWatchResumeMs =
+            Math.max(0L, System.currentTimeMillis() - issuedAtWallTimeMillis);
+        mElapsedTimeNanos += activeSinceWatchResumeMs * NANO_IN_MILLI;
+        saveActivity(/* manualDistance= */ null);
+      }
+    }
     if (commandId != null && workout != null) {
       workout.markWatchSessionCommandApplied(commandId);
       if (state.get() == TrackerState.STARTED || state.get() == TrackerState.PAUSED) {
@@ -502,6 +529,28 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
       }
     }
     return true;
+  }
+
+  private void refreshActiveTotalsFromDatabase() {
+    if (mDB == null || mActivityId <= 0L) return;
+    try (Cursor cursor =
+        mDB.query(
+            DB.ACTIVITY.TABLE,
+            new String[] {DB.ACTIVITY.DISTANCE, DB.ACTIVITY.TIME},
+            "_id = ?",
+            new String[] {Long.toString(mActivityId)},
+            null,
+            null,
+            null,
+            "1")) {
+      if (!cursor.moveToFirst()) return;
+      if (!cursor.isNull(0)) mElapsedDistance = Math.max(0.0, cursor.getDouble(0));
+      if (!cursor.isNull(1)) {
+        mElapsedTimeNanos = Math.max(0L, cursor.getLong(1)) * 1_000_000_000L;
+      }
+    } catch (RuntimeException exception) {
+      Log.w("Tracker", "Unable to refresh totals after delayed watch control", exception);
+    }
   }
 
   public void start() {
@@ -615,7 +664,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     state.set(TrackerState.PAUSED);
     setNextLocationType(DB.LOCATION.TYPE_PAUSE);
     // This saves a PAUSE location
-    internalOnLocationChanged(mLastLocationStarted);
+    lastInternalLocationId = internalOnLocationChanged(mLastLocationStarted);
     gpsFixFilter.reset();
     gpsCurrentSpeedFilter.reset();
     mCurrentSpeed = 0.0;
@@ -650,7 +699,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     state.set(TrackerState.STOPPED);
     setNextLocationType(DB.LOCATION.TYPE_PAUSE);
     // This saves a PAUSE location
-    internalOnLocationChanged(mLastLocationStarted);
+    lastInternalLocationId = internalOnLocationChanged(mLastLocationStarted);
     gpsFixFilter.reset();
     gpsCurrentSpeedFilter.reset();
     mCurrentSpeed = 0.0;
@@ -660,11 +709,12 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     queueActiveCheckpoint();
   }
 
-  private void internalOnLocationChanged(Location arg0) {
+  private long internalOnLocationChanged(Location arg0) {
     // insert location, set internal time
     if (arg0 != null) {
-      onLocationChangedImpl(arg0, true);
+      return onLocationChangedImpl(arg0, true);
     }
+    return -1L;
   }
 
   public void resume() {
@@ -692,7 +742,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     state.set(TrackerState.STARTED);
     setNextLocationType(DB.LOCATION.TYPE_RESUME);
     // save a resume location
-    internalOnLocationChanged(mLastLocation);
+    lastInternalLocationId = internalOnLocationChanged(mLastLocation);
     gpsFixFilter.reset();
     gpsCurrentSpeedFilter.reset();
     mCurrentSpeed = 0.0;
@@ -962,11 +1012,11 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     onLocationChangedImpl(arg0, false, fixResult);
   }
 
-  private void onLocationChangedImpl(Location arg0, boolean internal) {
-    onLocationChangedImpl(arg0, internal, null);
+  private long onLocationChangedImpl(Location arg0, boolean internal) {
+    return onLocationChangedImpl(arg0, internal, null);
   }
 
-  private void onLocationChangedImpl(
+  private long onLocationChangedImpl(
       Location arg0, boolean internal, GpsFixFilter.Result fixResult) {
     boolean shouldPersist = TrackerLocationPersistencePolicy.shouldPersist(internal, state.get());
     int persistedType = mLocationType;
@@ -1030,16 +1080,18 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
       }
     }
 
+    long persistedLocationId = -1L;
     if (shouldPersist) {
-      mDBWriter.onLocationChanged(
-          arg0,
-          eleValue,
-          getTimeMs(),
-          mElapsedDistance,
-          hrValue,
-          cadValue,
-          temperatureValue,
-          pressureValue);
+      persistedLocationId =
+          mDBWriter.onLocationChanged(
+              arg0,
+              eleValue,
+              getTimeMs(),
+              mElapsedDistance,
+              hrValue,
+              cadValue,
+              temperatureValue,
+              pressureValue);
 
       switch (mLocationType) {
         case DB.LOCATION.TYPE_START:
@@ -1081,6 +1133,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
         mLastLocationStarted = arg0;
       }
     }
+    return persistedLocationId;
   }
 
   private void queueActiveCheckpoint() {
