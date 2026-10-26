@@ -146,6 +146,39 @@ class WorkoutTelemetryRouteReconcilerTest {
   }
 
   @Test
+  fun sameBootClockAnchorCorrectsWatchWallClockBeforeRoutePlacement() {
+    insertPhoneLocation(SAMPLE_TIME + 20_000, latitude = 59.35)
+    val offset = 600_000L
+    val sampleTime = SAMPLE_TIME + 1_000L
+    val sample = sample(
+        1,
+        wallTimeMillis = sampleTime + offset,
+        elapsedRealtimeNanos = 11_000_000_000L)
+    val anchor = WorkoutTelemetryProtocol.ClockAnchor(
+        offset,
+        60_000_000_000L,
+        SESSION_START + 60_000L + offset,
+        50L)
+    inbox.associateActivity(SESSION_ID, ACTIVITY_ID, SESSION_START)
+    val committed = inbox.commitBatch(
+        WorkoutTelemetryProtocol.Batch(SESSION_ID, listOf(sample), anchor), NOW)
+
+    val result = WorkoutTelemetryRouteReconciler(database).reconcilePending(SESSION_ID)
+    database.query(
+        DB.LOCATION.TABLE,
+        arrayOf(DB.LOCATION.TIME),
+        "${DB.LOCATION.ACTIVITY} = ? AND ${DB.LOCATION.TYPE} = ? AND ${DB.LOCATION.LATITUDE} < ?",
+        arrayOf(ACTIVITY_ID.toString(), DB.LOCATION.TYPE_GPS.toString(), "59.34"),
+        null, null, null).use { cursor ->
+      assertEquals(WorkoutTelemetryInboxStore.CommitStatus.COMMITTED, committed.status)
+      assertTrue(result.success)
+      assertEquals(1, result.insertedLocations)
+      assertTrue(cursor.moveToFirst())
+      assertEquals(sampleTime, cursor.getLong(0))
+    }
+  }
+
+  @Test
   fun phoneWallClockRegressionKeepsOriginalRouteChronology() {
     insertPhoneLocation(SAMPLE_TIME + 20_000, latitude = 59.36,
         elapsedMillis = 20_000.0, distanceMeters = 100.0)
@@ -269,14 +302,25 @@ class WorkoutTelemetryRouteReconcilerTest {
     assertEquals(WorkoutTelemetryInboxStore.CommitStatus.COMMITTED, result.status)
   }
 
+  private fun commit(
+      sample: WorkoutTelemetryProtocol.Sample,
+      anchor: WorkoutTelemetryProtocol.ClockAnchor
+  ) {
+    inbox.associateActivity(SESSION_ID, ACTIVITY_ID, SESSION_START)
+    val result = inbox.commitBatch(
+        WorkoutTelemetryProtocol.Batch(SESSION_ID, listOf(sample), anchor), NOW)
+    assertEquals(WorkoutTelemetryInboxStore.CommitStatus.COMMITTED, result.status)
+  }
+
   private fun sample(
       sequence: Long,
       accuracyMeters: Double = 5.0,
-      wallTimeMillis: Long = SAMPLE_TIME + sequence * 1_000) =
+      wallTimeMillis: Long = SAMPLE_TIME + sequence * 1_000,
+      elapsedRealtimeNanos: Long = sequence * 1_000_000_000L) =
       WorkoutTelemetryProtocol.Sample(
           SESSION_ID,
           sequence,
-          sequence * 1_000_000_000,
+          elapsedRealtimeNanos,
           wallTimeMillis,
           59.33 + sequence * 0.00001,
           18.06,

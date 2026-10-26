@@ -2,8 +2,11 @@ package org.runnerup.common.wear;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -80,6 +83,81 @@ public class WorkoutTelemetryProtocolTest {
   public void sampleIdentityIncludesSessionAndSequence() {
     assertNotEquals(sample(1), sample(2));
     assertEquals(sample(1), sample(1));
+  }
+
+  @Test
+  public void v1BatchRemainsReadableWithoutClockAnchor() throws Exception {
+    WorkoutTelemetryProtocol.Sample sample = sample(1);
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    try (DataOutputStream output = new DataOutputStream(bytes)) {
+      output.writeInt(0x57544231);
+      output.writeByte(1);
+      output.writeUTF(SESSION);
+      output.writeByte(1);
+      output.writeLong(sample.sequence);
+      output.writeLong(sample.watchElapsedRealtimeNanos);
+      output.writeLong(sample.wallTimeMillis);
+      output.writeByte(3);
+      output.writeDouble(sample.latitude);
+      output.writeDouble(sample.longitude);
+      output.writeDouble(sample.horizontalAccuracyMeters);
+    }
+
+    WorkoutTelemetryProtocol.Batch decoded =
+        WorkoutTelemetryProtocol.decodeBatch(bytes.toByteArray());
+
+    assertEquals(Collections.singletonList(sample), decoded.samples);
+    assertNull(decoded.clockAnchor);
+  }
+
+  @Test
+  public void v2BatchCarriesBoundedClockAnchorWithoutChangingSampleIdentity() throws Exception {
+    WorkoutTelemetryProtocol.Sample sample = sample(1);
+    WorkoutTelemetryProtocol.ClockAnchor anchor =
+        new WorkoutTelemetryProtocol.ClockAnchor(600_000, 60_000_000_000L, 1_800_000_660_000L, 50);
+    WorkoutTelemetryProtocol.Batch batch =
+        new WorkoutTelemetryProtocol.Batch(SESSION, Collections.singletonList(sample), anchor);
+
+    WorkoutTelemetryProtocol.Batch decoded =
+        WorkoutTelemetryProtocol.decodeBatch(WorkoutTelemetryProtocol.encodeBatch(batch));
+
+    assertEquals(batch, decoded);
+    assertEquals(sample, decoded.samples.get(0));
+    assertEquals(
+        1_800_000_001_000L,
+        decoded
+            .clockAnchor
+            .phoneAlignedWallTimeMillis(
+                new WorkoutTelemetryProtocol.Sample(
+                    SESSION,
+                    1,
+                    1_000_000_000L,
+                    1_800_000_601_000L,
+                    sample.latitude,
+                    sample.longitude,
+                    sample.horizontalAccuracyMeters,
+                    sample.altitudeMeters,
+                    sample.speedMetersPerSecond,
+                    sample.heartRateBpm))
+            .longValue());
+  }
+
+  @Test
+  public void clockAnchorRejectsUnboundedOffsetRoundTripAndBootMismatch() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkoutTelemetryProtocol.ClockAnchor(86_400_001, 1, 1, 1));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkoutTelemetryProtocol.ClockAnchor(0, 1, 1, 2_001));
+
+    WorkoutTelemetryProtocol.ClockAnchor anchor =
+        new WorkoutTelemetryProtocol.ClockAnchor(0, 60_000_000_000L, 1_800_000_060_000L, 50);
+    WorkoutTelemetryProtocol.Sample rebooted =
+        new WorkoutTelemetryProtocol.Sample(
+            SESSION, 1, 1_000_000_000L, 1_800_001_001_000L, 59.3, 18.0, 6.0, null, null, null);
+
+    assertNull(anchor.phoneAlignedWallTimeMillis(rebooted));
   }
 
   private static WorkoutTelemetryProtocol.Sample sample(long sequence) {
