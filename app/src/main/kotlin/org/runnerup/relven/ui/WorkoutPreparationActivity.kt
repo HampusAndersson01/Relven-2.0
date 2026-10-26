@@ -5,12 +5,17 @@ import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.pm.PackageManager
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -48,6 +53,20 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   private var sessionCommandReceiverRegistered = false
   private var finishAfterCancel = false
   private var finishAfterStartResolution = false
+  private var activityRecognitionPromptOpen = false
+  private val activityRecognitionPermissionLauncher =
+      registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        activityRecognitionPromptOpen = false
+        if (granted) {
+          startWorkout()
+        } else {
+          android.widget.Toast.makeText(
+                  this,
+                  getString(org.runnerup.R.string.workout_activity_permission_denied),
+                  android.widget.Toast.LENGTH_LONG)
+              .show()
+        }
+      }
   private var restoredStartCommand: org.runnerup.common.wear.WorkoutSessionProtocol.Command? = null
   private val sessionCommandReceiver =
       object : BroadcastReceiver() {
@@ -432,6 +451,19 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   private fun startWorkout() {
     val activeTracker = tracker ?: return
     if (activeTracker.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
+    if (state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.PHONE &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      val locationGranted = activeTracker.hasGpsLocationPermission()
+      val activityRecognitionGranted =
+          ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) ==
+              PackageManager.PERMISSION_GRANTED
+      if (org.runnerup.notification.WorkoutForegroundServiceTypePolicy
+          .needsActivityRecognitionPermission(
+              Build.VERSION.SDK_INT, locationGranted, activityRecognitionGranted)) {
+        if (!activityRecognitionPromptOpen) showActivityRecognitionPermissionPrompt()
+        return
+      }
+    }
     activeTracker.prepareWearWorkoutSession(state.value.sessionId, state.value.watchReady)
     if (state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
       val request = state.createStartRequest(SystemClock.elapsedRealtime()) ?: return
@@ -449,6 +481,24 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
     if (result == org.runnerup.common.wear.WorkoutSessionProtocol.Result.REJECTED) return
     if (!state.acceptAuthoritativeStart(command)) return
     beginAcceptedCountdown()
+  }
+
+  @SuppressLint("InlinedApi")
+  private fun showActivityRecognitionPermissionPrompt() {
+    activityRecognitionPromptOpen = true
+    AlertDialog.Builder(this)
+        .setTitle(org.runnerup.R.string.workout_activity_permission_title)
+        .setMessage(org.runnerup.R.string.workout_activity_permission_message)
+        .setNegativeButton(org.runnerup.R.string.workout_activity_permission_cancel) { dialog, _ ->
+          activityRecognitionPromptOpen = false
+          dialog.dismiss()
+        }
+        .setPositiveButton(org.runnerup.R.string.workout_activity_permission_continue) { dialog, _ ->
+          dialog.dismiss()
+          activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+        .setOnCancelListener { activityRecognitionPromptOpen = false }
+        .show()
   }
 
   private fun restoreCountdownIfNeeded() {
