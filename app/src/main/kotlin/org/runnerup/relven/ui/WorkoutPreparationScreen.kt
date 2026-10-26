@@ -163,7 +163,8 @@ internal fun WorkoutPreparationScreen(
         enabled =
                 state.phase == WorkoutPreparationPhase.READY &&
                 trackerReady &&
-                selectedWorkoutRestoreState == SelectedWorkoutRestoreState.AVAILABLE,
+                selectedWorkoutRestoreState == SelectedWorkoutRestoreState.AVAILABLE &&
+                gpsReadiness.canStartWorkout,
         modifier = Modifier.fillMaxWidth().height(58.dp),
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(containerColor = RelvenColors.Orange)) {
@@ -179,8 +180,9 @@ internal fun WorkoutPreparationScreen(
                 state.phase == WorkoutPreparationPhase.START_REQUESTED -> "Väntar på klockan"
                 state.phase == WorkoutPreparationPhase.CANCEL_REQUESTED -> "Avbryter nedräkning"
                 state.phase == WorkoutPreparationPhase.COUNTDOWN -> "Startar om ${state.countdownValue}"
-                trackerReady -> "Starta pass · 3 sek nedräkning"
-                else -> "Förbereder träningsmotorn"
+                !trackerReady -> "Förbereder träningsmotorn"
+                !gpsReadiness.canStartWorkout -> "Väntar på GPS"
+                else -> "Starta pass · 3 sek nedräkning"
               },
           color = RelvenColors.Background,
           fontWeight = FontWeight.Bold,

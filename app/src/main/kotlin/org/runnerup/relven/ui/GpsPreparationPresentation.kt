@@ -15,16 +15,20 @@ internal data class GpsPreparationUiState(
   val status: GpsPreparationStatus,
   val accuracyMeters: Float? = null,
 ) {
+  /** Running can begin only after a usable GPS fix; non-GPS workouts are unaffected. */
+  val canStartWorkout: Boolean
+    get() = status == GpsPreparationStatus.NOT_REQUIRED || status == GpsPreparationStatus.READY
+
   val label: String
     get() =
       when (status) {
         GpsPreparationStatus.NOT_REQUIRED -> "GPS behövs inte"
-        GpsPreparationStatus.PERMISSION_REQUIRED -> "Platsåtkomst krävs · passet kan starta utan GPS"
-        GpsPreparationStatus.UNAVAILABLE -> "GPS är inte tillgängligt · passet kan starta ändå"
-        GpsPreparationStatus.DISABLED -> "Plats är avstängd · passet kan starta ändå"
-        GpsPreparationStatus.SEARCHING -> "Söker GPS-signal · passet kan starta ändå"
-        GpsPreparationStatus.FIX_ACQUIRED -> "GPS-position mottagen · noggrannhet saknas"
-        GpsPreparationStatus.ACCURACY_INSUFFICIENT -> "GPS-signal svag · passet kan starta ändå"
+        GpsPreparationStatus.PERMISSION_REQUIRED -> "Platsåtkomst krävs för att starta löppasset"
+        GpsPreparationStatus.UNAVAILABLE -> "GPS är inte tillgängligt · kontrollera enheten"
+        GpsPreparationStatus.DISABLED -> "Plats är avstängd · slå på plats för att starta"
+        GpsPreparationStatus.SEARCHING -> "Söker GPS-signal · passet startar när GPS är redo"
+        GpsPreparationStatus.FIX_ACQUIRED -> "GPS-position hittad · kontrollerar noggrannhet"
+        GpsPreparationStatus.ACCURACY_INSUFFICIENT -> "GPS-signal svag · väntar på bättre noggrannhet"
         GpsPreparationStatus.READY -> "GPS redo"
       }
 }

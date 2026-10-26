@@ -114,7 +114,9 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
             if (!state.acceptAuthoritativeStart(command)) return
             countdownHandler.removeCallbacks(watchStartRequestTimeout)
             countdownHandler.removeCallbacks(countdownTick)
-            if (finishAfterStartResolution) {
+            if (!gpsReadiness.canStartWorkout) {
+              cancelCountdown("${gpsReadiness.label} · starta igen när GPS är redo")
+            } else if (finishAfterStartResolution) {
               finishAfterStartResolution = false
               finishAfterCancel = true
               cancelCountdown("Avbryter passet")
@@ -155,6 +157,10 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         return
       }
       if (trackerStartIssued) return
+      if (!gpsReadiness.canStartWorkout) {
+        cancelCountdown("GPS-signalen försvann · starta igen när GPS är redo")
+        return
+      }
       val activeTracker = tracker
       if (activeTracker == null || !selectedWorkoutAvailable) {
         cancelCountdown("Anslutningen till passmotorn försvann")
@@ -478,6 +484,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   }
 
   private fun startWorkout() {
+    if (!gpsReadiness.canStartWorkout) return
     val activeTracker = tracker ?: return
     if (activeTracker.state != TrackerState.CONNECTED || !selectedWorkoutAvailable) return
     if (state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.PHONE &&
