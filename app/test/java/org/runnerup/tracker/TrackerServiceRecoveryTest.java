@@ -103,6 +103,30 @@ public class TrackerServiceRecoveryTest {
       assertFalse(restoredTracker.getWorkout().isPaused());
       assertEquals(checkpoint.isMute(), restoredTracker.getWorkout().getMute());
       assertNotNull(restoredTracker.getWorkout().getCurrentStep());
+
+      android.os.PowerManager.WakeLock wakeLock = wakeLockOf(restoredTracker);
+      assertTrue("restored active workout should hold a partial wake lock", wakeLock.isHeld());
+      stopCheckpointTimerForElapsedTimeTest(restoredTracker);
+      Shadows.shadowOf(Looper.getMainLooper()).idleFor(6, TimeUnit.MINUTES);
+      android.os.PowerManager.WakeLock longRunWakeLock = wakeLockOf(restoredTracker);
+      assertTrue(
+          "active workout wake lock must outlive the setup timeout", longRunWakeLock.isHeld());
+
+      setApplyingWatchSessionCommand(restoredTracker, true);
+      try {
+        restoredTracker.pause();
+        assertFalse(
+            "pausing should release the active workout wake lock", longRunWakeLock.isHeld());
+        restoredTracker.resume();
+        android.os.PowerManager.WakeLock resumedWakeLock = wakeLockOf(restoredTracker);
+        assertTrue(
+            "resuming should reacquire the active workout wake lock", resumedWakeLock.isHeld());
+        restoredTracker.stop();
+        assertFalse(
+            "stopping should release the active workout wake lock", resumedWakeLock.isHeld());
+      } finally {
+        setApplyingWatchSessionCommand(restoredTracker, false);
+      }
     } finally {
       controller.destroy();
       awaitCheckpointWrites(restoredTracker);
@@ -124,6 +148,28 @@ public class TrackerServiceRecoveryTest {
     WorkoutBuilder.addAudioCuesToWorkout(
         context.getResources(), workout, audioPreferences, preferences);
     return workout;
+  }
+
+  private static android.os.PowerManager.WakeLock wakeLockOf(Tracker tracker) throws Exception {
+    Field field = Tracker.class.getDeclaredField("mWakeLock");
+    field.setAccessible(true);
+    return (android.os.PowerManager.WakeLock) field.get(tracker);
+  }
+
+  private static void stopCheckpointTimerForElapsedTimeTest(Tracker tracker) throws Exception {
+    Field handlerField = Tracker.class.getDeclaredField("handler");
+    Field runnableField = Tracker.class.getDeclaredField("checkpointRunnable");
+    handlerField.setAccessible(true);
+    runnableField.setAccessible(true);
+    ((android.os.Handler) handlerField.get(tracker))
+        .removeCallbacks((Runnable) runnableField.get(tracker));
+  }
+
+  private static void setApplyingWatchSessionCommand(Tracker tracker, boolean applying)
+      throws Exception {
+    Field field = Tracker.class.getDeclaredField("applyingWatchSessionCommand");
+    field.setAccessible(true);
+    field.setBoolean(tracker, applying);
   }
 
   private static void assertTruePositive(long activityId) {
