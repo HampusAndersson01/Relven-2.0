@@ -87,7 +87,8 @@ public class WorkoutSessionEventJournalTest {
     assertEquals(WorkoutSessionProtocol.Phase.COMPLETED, restored.replayState().getPhase());
     assertEquals(4, restored.pendingEvents().size());
     for (int index = 0; index < events.length; index++) {
-      assertEquals(events[index].getCommandId(), restored.pendingEvents().get(index).getCommandId());
+      assertEquals(
+          events[index].getCommandId(), restored.pendingEvents().get(index).getCommandId());
     }
   }
 
