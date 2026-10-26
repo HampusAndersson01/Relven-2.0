@@ -222,6 +222,7 @@ public final class WorkoutSessionEventJournal {
         && first.getActor() == second.getActor()
         && first.getAction() == second.getAction()
         && first.getIssuedAtElapsedRealtimeMs() == second.getIssuedAtElapsedRealtimeMs()
-        && first.getPlannedStartElapsedRealtimeMs() == second.getPlannedStartElapsedRealtimeMs();
+        && first.getPlannedStartElapsedRealtimeMs() == second.getPlannedStartElapsedRealtimeMs()
+        && first.getIssuedAtWallTimeMillis() == second.getIssuedAtWallTimeMillis();
   }
 }

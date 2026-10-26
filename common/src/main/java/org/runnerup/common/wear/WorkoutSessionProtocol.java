@@ -9,7 +9,8 @@ import java.util.UUID;
 
 /** Versioned, bounded control envelope and reducer for one phone/watch workout session. */
 public final class WorkoutSessionProtocol {
-  public static final int CURRENT_VERSION = 2;
+  public static final int CURRENT_VERSION = 3;
+  private static final int LEGACY_VERSION = 2;
   public static final int MAX_MESSAGE_BYTES = 256;
   private static final int MAGIC = 0x52575332; // RWS2
   private static final int COMMAND = 1;
@@ -29,7 +30,8 @@ public final class WorkoutSessionProtocol {
         Actor.PHONE,
         acceptedCommand.getAction(),
         acceptedCommand.getIssuedAtElapsedRealtimeMs(),
-        acceptedCommand.getPlannedStartElapsedRealtimeMs());
+        acceptedCommand.getPlannedStartElapsedRealtimeMs(),
+        acceptedCommand.getIssuedAtWallTimeMillis());
   }
 
   /** Rebases a committed authority command onto a recipient's elapsed-realtime clock. */
@@ -45,7 +47,8 @@ public final class WorkoutSessionProtocol {
         committedCommand.getActor(),
         committedCommand.getAction(),
         projectedIssuedAtElapsedRealtimeMs,
-        projectedPlannedStartElapsedRealtimeMs);
+        projectedPlannedStartElapsedRealtimeMs,
+        committedCommand.getIssuedAtWallTimeMillis());
   }
 
   /** A delayed start projection is stale once its shared monotonic deadline has passed. */
@@ -93,6 +96,7 @@ public final class WorkoutSessionProtocol {
     private final Action action;
     private final long issuedAtElapsedRealtimeMs;
     private final long plannedStartElapsedRealtimeMs;
+    private final long issuedAtWallTimeMillis;
 
     public Command(
         String sessionId,
@@ -102,11 +106,33 @@ public final class WorkoutSessionProtocol {
         Action action,
         long issuedAtElapsedRealtimeMs,
         long plannedStartElapsedRealtimeMs) {
+      this(
+          sessionId,
+          commandId,
+          sequence,
+          actor,
+          action,
+          issuedAtElapsedRealtimeMs,
+          plannedStartElapsedRealtimeMs,
+          0L);
+    }
+
+    public Command(
+        String sessionId,
+        String commandId,
+        long sequence,
+        Actor actor,
+        Action action,
+        long issuedAtElapsedRealtimeMs,
+        long plannedStartElapsedRealtimeMs,
+        long issuedAtWallTimeMillis) {
       validateUuid(sessionId, "session");
       validateUuid(commandId, "command");
       if (sequence <= 0) throw new IllegalArgumentException("Invalid sequence");
       if (actor == null || action == null) throw new IllegalArgumentException("Invalid command");
-      if (issuedAtElapsedRealtimeMs < 0 || plannedStartElapsedRealtimeMs < 0) {
+      if (issuedAtElapsedRealtimeMs < 0
+          || plannedStartElapsedRealtimeMs < 0
+          || issuedAtWallTimeMillis < 0) {
         throw new IllegalArgumentException("Invalid monotonic time");
       }
       this.sessionId = sessionId;
@@ -116,6 +142,7 @@ public final class WorkoutSessionProtocol {
       this.action = action;
       this.issuedAtElapsedRealtimeMs = issuedAtElapsedRealtimeMs;
       this.plannedStartElapsedRealtimeMs = plannedStartElapsedRealtimeMs;
+      this.issuedAtWallTimeMillis = issuedAtWallTimeMillis;
     }
 
     public String getSessionId() {
@@ -144,6 +171,11 @@ public final class WorkoutSessionProtocol {
 
     public long getPlannedStartElapsedRealtimeMs() {
       return plannedStartElapsedRealtimeMs;
+    }
+
+    /** Wall-clock timestamp lets a receiving phone place an offline event on its recorded route. */
+    public long getIssuedAtWallTimeMillis() {
+      return issuedAtWallTimeMillis;
     }
   }
 
@@ -280,6 +312,7 @@ public final class WorkoutSessionProtocol {
       output.writeByte(command.action.ordinal());
       output.writeLong(command.issuedAtElapsedRealtimeMs);
       output.writeLong(command.plannedStartElapsedRealtimeMs);
+      output.writeLong(command.issuedAtWallTimeMillis);
     }
     if (bytes.size() > MAX_MESSAGE_BYTES) throw new IOException("Session command too large");
     return bytes.toByteArray();
@@ -291,8 +324,10 @@ public final class WorkoutSessionProtocol {
     }
     try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
       if (input.readInt() != MAGIC) throw new IOException("Invalid session message header");
-      if (input.readUnsignedByte() != CURRENT_VERSION)
+      int version = input.readUnsignedByte();
+      if (version != LEGACY_VERSION && version != CURRENT_VERSION) {
         throw new IOException("Unsupported session protocol");
+      }
       if (input.readUnsignedByte() != COMMAND)
         throw new IOException("Unexpected session message type");
       String sessionId = input.readUTF();
@@ -302,6 +337,7 @@ public final class WorkoutSessionProtocol {
       int actionIndex = input.readUnsignedByte();
       long issuedAt = input.readLong();
       long startAt = input.readLong();
+      long issuedAtWallTime = version >= CURRENT_VERSION ? input.readLong() : 0L;
       if (input.available() != 0) throw new IOException("Trailing session message data");
       if (actorIndex >= Actor.values().length || actionIndex >= Action.values().length) {
         throw new IOException("Invalid session command enum");
@@ -314,7 +350,8 @@ public final class WorkoutSessionProtocol {
             Actor.values()[actorIndex],
             Action.values()[actionIndex],
             issuedAt,
-            startAt);
+            startAt,
+            issuedAtWallTime);
       } catch (IllegalArgumentException invalid) {
         throw new IOException("Invalid session command", invalid);
       }
@@ -451,6 +488,35 @@ public final class WorkoutSessionProtocol {
     return new ClockOffset(true, offset, rtt);
   }
 
+  /** Estimates watch-minus-phone wall-clock offset using an NTP-style monotonic RTT bound. */
+  public static WallClockOffset estimateWatchInitiatedWallClockOffset(
+      long watchSentElapsed,
+      long watchSentWall,
+      long phoneReceivedElapsed,
+      long phoneReceivedWall,
+      long phoneSentElapsed,
+      long phoneSentWall,
+      long watchReceivedElapsed,
+      long watchReceivedWall,
+      long maxRttMs) {
+    long rtt =
+        (watchReceivedElapsed - watchSentElapsed) - (phoneSentElapsed - phoneReceivedElapsed);
+    if (watchSentElapsed < 0L
+        || watchSentWall <= 0L
+        || phoneReceivedElapsed < 0L
+        || phoneReceivedWall <= 0L
+        || phoneSentElapsed < phoneReceivedElapsed
+        || phoneSentWall < phoneReceivedWall
+        || watchReceivedElapsed < watchSentElapsed
+        || watchReceivedWall < watchSentWall
+        || rtt < 0L
+        || rtt > Math.min(MAX_CLOCK_RTT_MS, Math.max(0L, maxRttMs))) {
+      return new WallClockOffset(false, 0L, rtt);
+    }
+    long offset = ((watchSentWall - phoneReceivedWall) + (watchReceivedWall - phoneSentWall)) / 2L;
+    return new WallClockOffset(true, offset, rtt);
+  }
+
   private static Transition rejected(SessionState state, String reason) {
     return new Transition(Result.REJECTED, state, reason);
   }
@@ -496,6 +562,35 @@ public final class WorkoutSessionProtocol {
     public long toPhoneElapsedRealtime(long watchElapsedRealtimeMs) {
       if (!valid) throw new IllegalStateException("Clock offset is not valid");
       return watchElapsedRealtimeMs - watchMinusPhoneOffsetMs;
+    }
+  }
+
+  public static final class WallClockOffset {
+    private final boolean valid;
+    private final long watchMinusPhoneOffsetMs;
+    private final long roundTripTimeMs;
+
+    private WallClockOffset(boolean valid, long offset, long rtt) {
+      this.valid = valid;
+      this.watchMinusPhoneOffsetMs = offset;
+      this.roundTripTimeMs = rtt;
+    }
+
+    public boolean isValid() {
+      return valid;
+    }
+
+    public long getWatchMinusPhoneOffsetMs() {
+      return watchMinusPhoneOffsetMs;
+    }
+
+    public long getRoundTripTimeMs() {
+      return roundTripTimeMs;
+    }
+
+    public long toPhoneWallTime(long watchWallTimeMillis) {
+      if (!valid) throw new IllegalStateException("Wall clock offset is not valid");
+      return watchWallTimeMillis - watchMinusPhoneOffsetMs;
     }
   }
 }

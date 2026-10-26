@@ -51,6 +51,7 @@ import org.runnerup.common.wear.StrengthResultOutboxStore;
 import org.runnerup.common.wear.StrengthResultProtocol;
 import org.runnerup.common.wear.WorkoutSessionEventJournal;
 import org.runnerup.common.wear.WorkoutSessionEventJournalStore;
+import org.runnerup.common.wear.WorkoutSessionPhoneProjectionPolicy;
 import org.runnerup.common.wear.WorkoutSessionProtocol;
 import org.runnerup.common.wear.WorkoutSessionTerminalDeliveryPolicy;
 import org.runnerup.common.wear.WorkoutTelemetryOutboxStore;
@@ -105,8 +106,11 @@ public class StateService extends Service
   private int strengthResultRetryAttempt;
   private final Runnable strengthResultRetry = this::retryPendingStrengthResult;
   private long clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+  private long wallClockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+  private WorkoutSessionProtocol.WallClockOffset watchWallClockOffset;
   private String pendingClockRequestId;
   private long pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+  private long pendingClockRequestSentAtWallTimeMillis = -1L;
   private Runnable clockRequestTimeout;
   private Bundle data;
   private final ValueModel<TrackerState> trackerState = new ValueModel<>();
@@ -337,26 +341,30 @@ public class StateService extends Service
   private void requestClockSync() {
     if (pendingClockRequestId != null || checkConnection() != null) return;
     long nowElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime();
-    if (watchClockOffset != null
-        && clockSampleReceivedAtWatchElapsedRealtimeMs >= 0
-        && nowElapsedRealtimeMs - clockSampleReceivedAtWatchElapsedRealtimeMs <= 600_000L) return;
+    if (hasFreshClockOffset(nowElapsedRealtimeMs) && hasFreshWallClockOffset(nowElapsedRealtimeMs))
+      return;
     pendingClockRequestId = java.util.UUID.randomUUID().toString();
     String requestId = pendingClockRequestId;
     pendingClockRequestSentAtElapsedRealtimeMs = nowElapsedRealtimeMs;
+    pendingClockRequestSentAtWallTimeMillis = System.currentTimeMillis();
     handler.removeCallbacks(clockRequestTimeout);
     clockRequestTimeout =
         () -> {
           if (requestId.equals(pendingClockRequestId)) {
             pendingClockRequestId = null;
             pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+            pendingClockRequestSentAtWallTimeMillis = -1L;
           }
           clockRequestTimeout = null;
+          retryPendingProjectionAfterClockFailure();
         };
     handler.postDelayed(clockRequestTimeout, 5_000L);
     try {
       byte[] request =
           org.runnerup.common.wear.WearClockSyncProtocol.encodeRequest(
-              requestId, pendingClockRequestSentAtElapsedRealtimeMs);
+              requestId,
+              pendingClockRequestSentAtElapsedRealtimeMs,
+              pendingClockRequestSentAtWallTimeMillis);
       Wearable.MessageApi.sendMessage(
               mGoogleApiClient, phoneNode, Constants.Wear.Path.MSG_SESSION_CLOCK_REQUEST, request)
           .setResultCallback(
@@ -366,15 +374,19 @@ public class StateService extends Service
                     && pendingClockRequestId.equals(requestId)) {
                   pendingClockRequestId = null;
                   pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+                  pendingClockRequestSentAtWallTimeMillis = -1L;
                   handler.removeCallbacks(clockRequestTimeout);
                   clockRequestTimeout = null;
+                  retryPendingProjectionAfterClockFailure();
                 }
               });
     } catch (java.io.IOException invalid) {
       pendingClockRequestId = null;
       pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+      pendingClockRequestSentAtWallTimeMillis = -1L;
       handler.removeCallbacks(clockRequestTimeout);
       clockRequestTimeout = null;
+      retryPendingProjectionAfterClockFailure();
       Log.w(TAG, "Unable to create clock synchronization request", invalid);
     }
   }
@@ -386,6 +398,20 @@ public class StateService extends Service
         && nowElapsedRealtimeMs - clockSampleReceivedAtWatchElapsedRealtimeMs <= 600_000L;
   }
 
+  private boolean hasFreshWallClockOffset(long nowElapsedRealtimeMs) {
+    return watchWallClockOffset != null
+        && watchWallClockOffset.isValid()
+        && wallClockSampleReceivedAtWatchElapsedRealtimeMs >= 0
+        && nowElapsedRealtimeMs >= wallClockSampleReceivedAtWatchElapsedRealtimeMs
+        && nowElapsedRealtimeMs - wallClockSampleReceivedAtWatchElapsedRealtimeMs <= 600_000L;
+  }
+
+  private void retryPendingProjectionAfterClockFailure() {
+    if (pendingPhoneProjection == null) return;
+    handler.removeCallbacks(pendingProjectionRetry);
+    handler.postDelayed(pendingProjectionRetry, 1_000L);
+  }
+
   private void handleClockReply(MessageEvent event) {
     if (phoneNode == null
         || !phoneNode.equals(event.getSourceNodeId())
@@ -394,9 +420,11 @@ public class StateService extends Service
       org.runnerup.common.wear.WearClockSyncProtocol.Reply reply =
           org.runnerup.common.wear.WearClockSyncProtocol.decodeReply(event.getData());
       if (!pendingClockRequestId.equals(reply.getRequestId())
-          || pendingClockRequestSentAtElapsedRealtimeMs != reply.getWatchSentAtElapsedRealtimeMs())
+          || pendingClockRequestSentAtElapsedRealtimeMs != reply.getWatchSentAtElapsedRealtimeMs()
+          || pendingClockRequestSentAtWallTimeMillis != reply.getWatchSentAtWallTimeMillis())
         return;
       long watchReceivedAt = android.os.SystemClock.elapsedRealtime();
+      long watchReceivedWallTimeMillis = System.currentTimeMillis();
       WorkoutSessionProtocol.ClockOffset offset =
           WorkoutSessionProtocol.estimateWatchInitiatedClockOffset(
               reply.getWatchSentAtElapsedRealtimeMs(),
@@ -404,14 +432,32 @@ public class StateService extends Service
               reply.getPhoneSentAtElapsedRealtimeMs(),
               watchReceivedAt,
               2_000L);
+      WorkoutSessionProtocol.WallClockOffset wallClockOffset =
+          WorkoutSessionProtocol.estimateWatchInitiatedWallClockOffset(
+              reply.getWatchSentAtElapsedRealtimeMs(),
+              reply.getWatchSentAtWallTimeMillis(),
+              reply.getPhoneReceivedAtElapsedRealtimeMs(),
+              reply.getPhoneReceivedAtWallTimeMillis(),
+              reply.getPhoneSentAtElapsedRealtimeMs(),
+              reply.getPhoneSentAtWallTimeMillis(),
+              watchReceivedAt,
+              watchReceivedWallTimeMillis,
+              2_000L);
       if (offset.isValid()) {
         watchClockOffset = offset;
         clockSampleReceivedAtWatchElapsedRealtimeMs = watchReceivedAt;
       }
+      if (wallClockOffset.isValid()) {
+        watchWallClockOffset = wallClockOffset;
+        wallClockSampleReceivedAtWatchElapsedRealtimeMs = watchReceivedAt;
+      }
       pendingClockRequestId = null;
       pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+      pendingClockRequestSentAtWallTimeMillis = -1L;
       handler.removeCallbacks(clockRequestTimeout);
       clockRequestTimeout = null;
+      if (offset.isValid() && wallClockOffset.isValid()) retryPendingPhoneProjection();
+      else retryPendingProjectionAfterClockFailure();
     } catch (java.io.IOException malformed) {
       Log.w(TAG, "Ignoring invalid clock synchronization reply", malformed);
     }
@@ -772,9 +818,12 @@ public class StateService extends Service
       String newPhoneNode = new String(ev.getDataItem().getData());
       if (!newPhoneNode.equals(phoneNode)) {
         watchClockOffset = null;
+        watchWallClockOffset = null;
         clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+        wallClockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
         pendingClockRequestId = null;
         pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+        pendingClockRequestSentAtWallTimeMillis = -1L;
         handler.removeCallbacks(clockRequestTimeout);
         clockRequestTimeout = null;
       }
@@ -791,9 +840,12 @@ public class StateService extends Service
       Log.d(TAG, "onDataChanged: " + ev.getDataItem().getUri() + ", phoneNode=null");
       phoneNode = null;
       watchClockOffset = null;
+      watchWallClockOffset = null;
       clockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
+      wallClockSampleReceivedAtWatchElapsedRealtimeMs = -1L;
       pendingClockRequestId = null;
       pendingClockRequestSentAtElapsedRealtimeMs = -1L;
+      pendingClockRequestSentAtWallTimeMillis = -1L;
       handler.removeCallbacks(clockRequestTimeout);
       clockRequestTimeout = null;
       preparedCountdownDeadline.set(null);
@@ -1046,7 +1098,8 @@ public class StateService extends Service
               WorkoutSessionProtocol.Actor.WATCH,
               action,
               issuedAtElapsedRealtimeMs,
-              plannedStart);
+              plannedStart,
+              System.currentTimeMillis());
       WorkoutSessionProtocol.Transition transition =
           WorkoutSessionProtocol.applyAtAuthority(
               workoutSessionState, WorkoutSessionProtocol.Actor.WATCH, command);
@@ -1113,7 +1166,8 @@ public class StateService extends Service
             WorkoutSessionProtocol.Actor.WATCH,
             request.getAction(),
             now,
-            plannedStart);
+            plannedStart,
+            System.currentTimeMillis());
     WorkoutSessionProtocol.Transition transition =
         WorkoutSessionProtocol.applyAtAuthority(
             workoutSessionState, WorkoutSessionProtocol.Actor.WATCH, accepted);
@@ -1142,7 +1196,8 @@ public class StateService extends Service
               request.getActor(),
               request.getAction(),
               request.getIssuedAtElapsedRealtimeMs(),
-              request.getPlannedStartElapsedRealtimeMs());
+              request.getPlannedStartElapsedRealtimeMs(),
+              request.getIssuedAtWallTimeMillis());
       Wearable.MessageApi.sendMessage(
           mGoogleApiClient,
           phoneNode,
@@ -1205,20 +1260,20 @@ public class StateService extends Service
     }
     if (checkConnection() != null) return;
     try {
-      WorkoutSessionProtocol.Command projection = accepted;
-      if (accepted.getAction() == WorkoutSessionProtocol.Action.START) {
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (!hasFreshClockOffset(now)) {
-          requestClockSync();
-          Log.w(TAG, "Cannot project a watch start without a fresh clock sample");
-          return;
-        }
-        projection =
-            WorkoutSessionProtocol.rebaseCommandClock(
-                accepted,
-                watchClockOffset.toPhoneElapsedRealtime(accepted.getIssuedAtElapsedRealtimeMs()),
-                watchClockOffset.toPhoneElapsedRealtime(
-                    accepted.getPlannedStartElapsedRealtimeMs()));
+      long now = android.os.SystemClock.elapsedRealtime();
+      boolean freshClock = hasFreshClockOffset(now);
+      boolean freshWallClock = hasFreshWallClockOffset(now);
+      if (!freshClock || !freshWallClock) requestClockSync();
+      WorkoutSessionProtocol.Command projection =
+          WorkoutSessionPhoneProjectionPolicy.forPhone(
+              accepted,
+              now,
+              freshClock ? watchClockOffset : null,
+              freshClock,
+              freshWallClock ? watchWallClockOffset : null);
+      if (projection == null) {
+        Log.w(TAG, "Holding a watch session event until required clock samples are available");
+        return;
       }
       Wearable.MessageApi.sendMessage(
           mGoogleApiClient,

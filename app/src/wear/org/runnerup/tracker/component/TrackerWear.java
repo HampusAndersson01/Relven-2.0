@@ -518,16 +518,21 @@ public class TrackerWear extends DefaultTrackerComponent
         || mGoogleApiClient == null
         || !mGoogleApiClient.isConnected()) return;
     long phoneReceivedAt = android.os.SystemClock.elapsedRealtime();
+    long phoneReceivedWallTime = System.currentTimeMillis();
     try {
       org.runnerup.common.wear.WearClockSyncProtocol.Request request =
           org.runnerup.common.wear.WearClockSyncProtocol.decodeRequest(event.getData());
       long phoneSentAt = android.os.SystemClock.elapsedRealtime();
+      long phoneSentWallTime = System.currentTimeMillis();
       byte[] reply =
           org.runnerup.common.wear.WearClockSyncProtocol.encodeReply(
               request.getRequestId(),
               request.getWatchSentAtElapsedRealtimeMs(),
+              request.getWatchSentAtWallTimeMillis(),
               phoneReceivedAt,
-              phoneSentAt);
+              phoneSentAt,
+              phoneReceivedWallTime,
+              phoneSentWallTime);
       Wearable.MessageApi.sendMessage(
           mGoogleApiClient, event.getSourceNodeId(), Wear.Path.MSG_SESSION_CLOCK_REPLY, reply);
     } catch (java.io.IOException malformed) {
@@ -580,7 +585,11 @@ public class TrackerWear extends DefaultTrackerComponent
                     || command.getAction() == WorkoutSessionProtocol.Action.SKIP)
                 && tracker.getState() == TrackerState.STARTED
                 && !tracker.hasAppliedWatchSessionCommand(command.getCommandId()))) {
-          if (!tracker.applyWatchSessionAction(command.getCommandId(), command.getAction())) return;
+          if (!tracker.applyWatchSessionAction(
+              command.getCommandId(),
+              command.getAction(),
+              command.getIssuedAtElapsedRealtimeMs(),
+              command.getIssuedAtWallTimeMillis())) return;
         }
         acknowledgeWatchSessionCommand(command);
       }
@@ -672,7 +681,11 @@ public class TrackerWear extends DefaultTrackerComponent
     WorkoutSessionProtocol.Result result = applySessionCommand(command);
     if (result != WorkoutSessionProtocol.Result.ACCEPTED) return;
     clearPendingPhoneSessionRequest(command);
-    if (!tracker.applyWatchSessionAction(command.getCommandId(), command.getAction())) return;
+    if (!tracker.applyWatchSessionAction(
+        command.getCommandId(),
+        command.getAction(),
+        command.getIssuedAtElapsedRealtimeMs(),
+        command.getIssuedAtWallTimeMillis())) return;
     acknowledgeWatchSessionCommand(command);
   }
 
@@ -839,7 +852,8 @@ public class TrackerWear extends DefaultTrackerComponent
               actor,
               command.getAction(),
               command.getIssuedAtElapsedRealtimeMs(),
-              command.getPlannedStartElapsedRealtimeMs());
+              command.getPlannedStartElapsedRealtimeMs(),
+              command.getIssuedAtWallTimeMillis());
       Intent intent =
           new Intent()
               .setPackage(context.getPackageName())
@@ -1121,7 +1135,8 @@ public class TrackerWear extends DefaultTrackerComponent
             WorkoutSessionProtocol.Actor.PHONE,
             action,
             now,
-            0L);
+            0L,
+            System.currentTimeMillis());
     if (!requestPhoneSessionCommand(request)) {
       Log.w(getName(), "Watch-authoritative control is pending; not applying it on the phone");
     }
@@ -1177,7 +1192,8 @@ public class TrackerWear extends DefaultTrackerComponent
               workoutSessionState.getAuthority(),
               action,
               now,
-              0L);
+              0L,
+              System.currentTimeMillis());
       applySessionCommand(event);
     }
   }
@@ -1199,7 +1215,8 @@ public class TrackerWear extends DefaultTrackerComponent
               WorkoutSessionProtocol.Actor.PHONE,
               WorkoutSessionProtocol.Action.START,
               android.os.SystemClock.elapsedRealtime(),
-              0L);
+              0L,
+              System.currentTimeMillis());
       Wearable.MessageApi.sendMessage(
           mGoogleApiClient,
           wearNode,

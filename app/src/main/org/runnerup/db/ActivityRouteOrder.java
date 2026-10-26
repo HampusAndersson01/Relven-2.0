@@ -58,9 +58,9 @@ public final class ActivityRouteOrder {
   }
 
   private static boolean canUseCapturedTime(SQLiteDatabase database, long activityId) {
-    if (!hasWearRoutePoints(database, activityId) || !hasPhoneGpsPoints(database, activityId)) {
-      return false;
-    }
+    if (!hasPhoneGpsPoints(database, activityId)) return false;
+    if (!hasWearRoutePoints(database, activityId)
+        && !hasOutOfOrderRouteTimestamp(database, activityId)) return false;
     try (Cursor cursor =
         database.query(
             Constants.DB.LOCATION.TABLE,
@@ -88,6 +88,29 @@ public final class ActivityRouteOrder {
         previousTime = time;
       }
       return true;
+    } catch (RuntimeException ignored) {
+      return false;
+    }
+  }
+
+  /** A deliberately backdated control marker is out of insertion order by design. */
+  private static boolean hasOutOfOrderRouteTimestamp(SQLiteDatabase database, long activityId) {
+    try (Cursor cursor =
+        database.query(
+            Constants.DB.LOCATION.TABLE,
+            new String[] {Constants.DB.LOCATION.TIME},
+            Constants.DB.LOCATION.ACTIVITY + " = ?",
+            new String[] {Long.toString(activityId)},
+            null,
+            null,
+            "_id ASC")) {
+      Long previousTime = null;
+      while (cursor.moveToNext()) {
+        long time = cursor.getLong(0);
+        if (previousTime != null && time < previousTime) return true;
+        previousTime = time;
+      }
+      return false;
     } catch (RuntimeException ignored) {
       return false;
     }
