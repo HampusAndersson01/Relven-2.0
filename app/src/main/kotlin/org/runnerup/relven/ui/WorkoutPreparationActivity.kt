@@ -38,7 +38,10 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   private var gpsReadiness by
       mutableStateOf(GpsPreparationUiState(GpsPreparationStatus.NOT_REQUIRED))
   private val gpsReadinessPublisher = GpsReadinessPublisher()
-  private var selectedWorkoutAvailable by mutableStateOf(true)
+  private var selectedWorkoutRestoreState by
+      mutableStateOf(SelectedWorkoutRestoreState.AVAILABLE)
+  private val selectedWorkoutAvailable: Boolean
+    get() = selectedWorkoutRestoreState == SelectedWorkoutRestoreState.AVAILABLE
   private var transferStarted = false
   private var restoreSelectedWorkout = false
   private var trackerStartIssued = false
@@ -141,8 +144,11 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
       // Reapply the explicit plan selection at the start boundary so Tracker.start() cannot
       // fall back to a stale/default workout.
       if (intent.getBooleanExtra(EXTRA_RESTORE_WORKOUT_FROM_INTENT, false)) {
-        selectedWorkoutAvailable = restoreSelectedWorkoutFromIntent(activeTracker)
-        if (!selectedWorkoutAvailable) {
+        val restored = restoreSelectedWorkoutFromIntent(activeTracker)
+        restoreSelectedWorkout = false
+        selectedWorkoutRestoreState =
+            selectedWorkoutRestoreState(restorePending = false, available = restored)
+        if (!restored) {
           updateTrackerState()
           cancelCountdown("Det valda passet kunde inte läsas in")
           return
@@ -251,14 +257,16 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
     restoreSelectedWorkout =
         savedInstanceState != null ||
             intent.getBooleanExtra(EXTRA_RESTORE_WORKOUT_FROM_INTENT, false)
-    selectedWorkoutAvailable = !restoreSelectedWorkout
+    selectedWorkoutRestoreState =
+        selectedWorkoutRestoreState(
+            restorePending = restoreSelectedWorkout, available = !restoreSelectedWorkout)
     setContent {
       RelvenTheme {
         WorkoutPreparationScreen(
             state = state.value,
             trackerReady = trackerReady,
             gpsReadiness = gpsReadiness,
-            selectedWorkoutAvailable = selectedWorkoutAvailable,
+            selectedWorkoutRestoreState = selectedWorkoutRestoreState,
             onStart = ::startWorkout,
             onCancel = ::cancelPreparation)
       }
@@ -338,6 +346,13 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   }
 
   private fun updateTrackerState() {
+    val activeTracker = tracker
+    if (activeTracker != null &&
+        WorkoutPreparationTrackerPolicy.shouldFailSelectedWorkoutRestore(
+            restorePending = restoreSelectedWorkout, state = activeTracker.state)) {
+      restoreSelectedWorkout = false
+      selectedWorkoutRestoreState = SelectedWorkoutRestoreState.FAILED
+    }
     restoreSelectedWorkoutIfConnected()
     trackerReady = tracker?.state == TrackerState.CONNECTED && selectedWorkoutAvailable
     updateGpsReadiness()
@@ -347,8 +362,10 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
     val activeTracker = tracker ?: return
     if (!WorkoutPreparationTrackerPolicy.shouldRestoreSelectedWorkout(
         restorePending = restoreSelectedWorkout, state = activeTracker.state)) return
-    selectedWorkoutAvailable = restoreSelectedWorkoutFromIntent(activeTracker)
+    val restored = restoreSelectedWorkoutFromIntent(activeTracker)
     restoreSelectedWorkout = false
+    selectedWorkoutRestoreState =
+        selectedWorkoutRestoreState(restorePending = false, available = restored)
   }
 
   private fun connectTrackerForPreparation() {

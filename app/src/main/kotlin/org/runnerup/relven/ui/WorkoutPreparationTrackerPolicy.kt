@@ -2,6 +2,22 @@ package org.runnerup.relven.ui
 
 import org.runnerup.common.tracker.TrackerState
 
+internal enum class SelectedWorkoutRestoreState {
+  RESTORING,
+  AVAILABLE,
+  FAILED
+}
+
+internal fun selectedWorkoutRestoreState(
+    restorePending: Boolean,
+    available: Boolean
+): SelectedWorkoutRestoreState =
+    when {
+      restorePending -> SelectedWorkoutRestoreState.RESTORING
+      available -> SelectedWorkoutRestoreState.AVAILABLE
+      else -> SelectedWorkoutRestoreState.FAILED
+    }
+
 /** Connects RunnerUp's existing engine during preparation without starting workout recording. */
 internal object WorkoutPreparationTrackerPolicy {
   fun shouldConnect(state: TrackerState): Boolean =
@@ -13,6 +29,9 @@ internal object WorkoutPreparationTrackerPolicy {
 
   fun shouldRestoreSelectedWorkout(restorePending: Boolean, state: TrackerState): Boolean =
       restorePending && state == TrackerState.CONNECTED
+
+  fun shouldFailSelectedWorkoutRestore(restorePending: Boolean, state: TrackerState): Boolean =
+      restorePending && state == TrackerState.ERROR
 
   fun shouldInitiateConnection(connectionAttemptPending: Boolean, state: TrackerState): Boolean =
       !connectionAttemptPending && shouldConnect(state)
