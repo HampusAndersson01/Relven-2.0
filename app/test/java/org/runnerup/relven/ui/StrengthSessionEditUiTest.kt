@@ -1,6 +1,8 @@
 package org.runnerup.relven.ui
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -11,6 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.runnerup.relven.exercise.ExerciseCatalog
 import org.runnerup.relven.strength.StrengthSession
 import org.runnerup.workout.RelvenStrengthWorkoutParser
 
@@ -18,6 +21,60 @@ import org.runnerup.workout.RelvenStrengthWorkoutParser
 @Config(sdk = [35])
 class StrengthSessionEditUiTest {
   @get:Rule val composeRule = createComposeRule()
+
+  @Test
+  fun activeSessionShowsLocalizedCatalogNameAndSeparateInstructionSteps() {
+    val exerciseId = "3b0e6f4b-9252-4e8c-96e5-7df5e0bb18d0"
+    val catalog =
+        ExerciseCatalog.parse(
+            """{"format":"relven.exercise-library","schemaVersion":1,"libraryRevision":2,"exercises":[{"exerciseId":"$exerciseId","revision":1,"name":{"en":"Bodyweight squat","sv":"Knäböj"},"category":"lower_body","movementPattern":"squat","muscleGroups":["quadriceps"],"equipment":[],"instructions":{"en":["Stand with feet hip-width apart.","Keep your chest lifted."],"sv":["Stå med fötterna höftbrett.","Håll bröstet lyft."]}}]}""",
+            "sv-SE")
+    val workout =
+        RelvenStrengthWorkoutParser.Workout(
+            "workout",
+            "Strength",
+            "strength",
+            listOf(
+                RelvenStrengthWorkoutParser.Exercise(
+                    "squat-step",
+                    exerciseId,
+                    2,
+                    1,
+                    "Bodyweight squat",
+                    "Stand with feet hip-width apart.\nKeep your chest lifted.",
+                    1,
+                    1,
+                    20,
+                    0,
+                    null)),
+            "{}")
+
+    composeRule.setContent {
+      StrengthSessionScreen(
+          session = StrengthSession.start("plan", "entry", workout),
+          exerciseCatalog = catalog,
+          completedAtMillis = null,
+          saveError = false,
+          isSavingProgress = false,
+          isSavingCompletion = false,
+          onEditResult = {},
+          onTick = {},
+          onLogRepetitions = {},
+          onSkipPendingResult = {},
+          onSkipExercise = {},
+          onSkipRest = {},
+          onBegin = {},
+          onPause = {},
+          onResume = {},
+          onFinish = {},
+          onClose = {})
+    }
+
+    composeRule.onNodeWithText("Knäböj").assertExists()
+    composeRule.onNodeWithText("Stå med fötterna höftbrett.").assertExists()
+    composeRule.onNodeWithText("Håll bröstet lyft.").assertExists()
+    composeRule.onAllNodesWithText("Bodyweight squat").assertCountEquals(0)
+  }
 
   @Test
   fun savedSetCanBeCorrectedWithoutLosingItsOptionalDetails() {
