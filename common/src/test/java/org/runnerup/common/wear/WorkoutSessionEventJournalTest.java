@@ -37,6 +37,61 @@ public class WorkoutSessionEventJournalTest {
   }
 
   @Test
+  public void multipleOfflineControlsRemainQueuedInOrderUntilPhoneAcknowledgesThem() {
+    MemoryStorage storage = new MemoryStorage();
+    WorkoutSessionEventJournalStore store = new WorkoutSessionEventJournalStore(storage);
+    WorkoutSessionProtocol.Command[] events = {
+      new WorkoutSessionProtocol.Command(
+          SESSION,
+          "fef77b0a-7012-4dd7-a374-cf7a1dd6f083",
+          1,
+          WorkoutSessionProtocol.Actor.WATCH,
+          WorkoutSessionProtocol.Action.START,
+          1_000L,
+          10_000L),
+      new WorkoutSessionProtocol.Command(
+          SESSION,
+          "671a25fc-cdb2-4d62-a3a2-175f2826040b",
+          2,
+          WorkoutSessionProtocol.Actor.WATCH,
+          WorkoutSessionProtocol.Action.PAUSE,
+          11_000L,
+          0L),
+      new WorkoutSessionProtocol.Command(
+          SESSION,
+          "ecfd3232-57bb-4a82-8f8a-594f4c2cb5cc",
+          3,
+          WorkoutSessionProtocol.Actor.WATCH,
+          WorkoutSessionProtocol.Action.RESUME,
+          15_000L,
+          0L),
+      new WorkoutSessionProtocol.Command(
+          SESSION,
+          "23c507e2-97fc-4daa-92f4-bdd36ddad9e5",
+          4,
+          WorkoutSessionProtocol.Actor.WATCH,
+          WorkoutSessionProtocol.Action.FINISH,
+          20_000L,
+          0L),
+    };
+
+    for (WorkoutSessionProtocol.Command event : events) {
+      assertEquals(
+          WorkoutSessionEventJournalStore.AppendResult.APPENDED,
+          store.append(SESSION, WorkoutSessionProtocol.Actor.WATCH, event));
+    }
+
+    WorkoutSessionEventJournal restored =
+        new WorkoutSessionEventJournalStore(storage).load(SESSION);
+    assertNotNull(restored);
+    assertEquals(WorkoutSessionProtocol.Phase.COMPLETED, restored.replayState().getPhase());
+    assertEquals(4, restored.pendingEvents().size());
+    for (int index = 0; index < events.length; index++) {
+      assertEquals(events[index].getCommandId(), restored.pendingEvents().get(index).getCommandId());
+    }
+  }
+
+  @Test
   public void terminalCompletionSurvivesRestartAndRemainsIdempotentUntilAcknowledged() {
     MemoryStorage storage = new MemoryStorage();
     WorkoutSessionEventJournalStore store = new WorkoutSessionEventJournalStore(storage);
