@@ -164,7 +164,18 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
   private ActiveWorkoutCheckpoint pendingRecoveryCheckpoint;
   private String pendingWatchCommandCheckpointId;
   private boolean recoveryStarted;
+  private static final long ACTIVE_WORKOUT_WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L;
+  private static final long ACTIVE_WORKOUT_WAKE_LOCK_RENEWAL_INTERVAL_MS = 5 * 60_000L;
   private final ExecutorService checkpointExecutor = Executors.newSingleThreadExecutor();
+  private final Runnable activeWorkoutWakeLockRenewal =
+      new Runnable() {
+        @Override
+        public void run() {
+          if (state.get() != TrackerState.STARTED) return;
+          setWakeLock(true, ACTIVE_WORKOUT_WAKE_LOCK_TIMEOUT_MS);
+          handler.postDelayed(this, ACTIVE_WORKOUT_WAKE_LOCK_RENEWAL_INTERVAL_MS);
+        }
+      };
   private final Runnable checkpointRunnable =
       new Runnable() {
         @Override
@@ -592,6 +603,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     setNextLocationType(DB.LOCATION.TYPE_START);
 
     state.set(TrackerState.STARTED);
+    holdWakeLockForActiveWorkout();
 
     activityOngoingState = new OngoingState(new Formatter(this), workout, this);
 
@@ -662,6 +674,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
         break;
     }
     state.set(TrackerState.PAUSED);
+    wakeLock(false);
     setNextLocationType(DB.LOCATION.TYPE_PAUSE);
     // This saves a PAUSE location
     lastInternalLocationId = internalOnLocationChanged(mLastLocationStarted);
@@ -697,6 +710,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
         break;
     }
     state.set(TrackerState.STOPPED);
+    wakeLock(false);
     setNextLocationType(DB.LOCATION.TYPE_PAUSE);
     // This saves a PAUSE location
     lastInternalLocationId = internalOnLocationChanged(mLastLocationStarted);
@@ -740,6 +754,7 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
     }
 
     state.set(TrackerState.STARTED);
+    holdWakeLockForActiveWorkout();
     setNextLocationType(DB.LOCATION.TYPE_RESUME);
     // save a resume location
     lastInternalLocationId = internalOnLocationChanged(mLastLocation);
@@ -1415,12 +1430,13 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
   private void restoreActiveWorkoutAfterConnect() {
     ActiveWorkoutCheckpoint checkpoint = pendingRecoveryCheckpoint;
     if (checkpoint == null || workout == null || mDBWriter == null) return;
-    wakeLock(true);
     SyncManager liveSyncManager = new SyncManager(getApplicationContext());
     liveSyncManager.loadLiveLoggers(liveLoggers);
     liveSyncManager.close();
     doBind();
     TrackerState recoveredState = workout.isPaused() ? TrackerState.PAUSED : TrackerState.STARTED;
+    if (recoveredState == TrackerState.STARTED) holdWakeLockForActiveWorkout();
+    else wakeLock(false);
     activityCompletionGate.beginActivity();
     state.set(recoveredState);
     if (components.getResultCode(TrackerWear.NAME) == TrackerComponent.ResultCode.RESULT_OK
@@ -1485,6 +1501,19 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
 
   @SuppressLint("Wakelock")
   private void wakeLock(boolean get) {
+    if (!get) handler.removeCallbacks(activeWorkoutWakeLockRenewal);
+    setWakeLock(get, get ? 300_000L : 0L);
+  }
+
+  @SuppressLint("Wakelock")
+  private void holdWakeLockForActiveWorkout() {
+    handler.removeCallbacks(activeWorkoutWakeLockRenewal);
+    setWakeLock(true, ACTIVE_WORKOUT_WAKE_LOCK_TIMEOUT_MS);
+    handler.postDelayed(activeWorkoutWakeLockRenewal, ACTIVE_WORKOUT_WAKE_LOCK_RENEWAL_INTERVAL_MS);
+  }
+
+  @SuppressLint("Wakelock")
+  private void setWakeLock(boolean get, long timeoutMs) {
     if (mWakeLock != null) {
       if (mWakeLock.isHeld()) {
         mWakeLock.release();
@@ -1497,8 +1526,9 @@ public class Tracker extends Service implements LocationListenerCompat, Constant
           Objects.requireNonNull(pm)
               .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RunnerUp:wakeLock");
       if (mWakeLock != null) {
-        // Set a timeout, this is before activity is started
-        mWakeLock.acquire(300000);
+        mWakeLock.setReferenceCounted(false);
+        // Use a timeout as a failsafe; active workouts renew it until pause/end.
+        mWakeLock.acquire(timeoutMs > 0 ? timeoutMs : ACTIVE_WORKOUT_WAKE_LOCK_TIMEOUT_MS);
       }
     }
   }

@@ -86,10 +86,14 @@ public class TrackerWear extends DefaultTrackerComponent
   private boolean scheduledWatchStartHeld;
   private WorkoutSessionProtocol.Command pendingPhoneSessionRequest;
   private int pendingPhoneSessionRequestAttempts;
+  private boolean wearableConnectionActive;
+  private boolean wearableListenersRegistered;
+  private int wearableConnectionRetryAttempt;
 
   private final Handler handler = new Handler();
   private final Runnable scheduledWatchStartRunnable = this::startScheduledWatchSession;
   private final Runnable pendingPhoneSessionRequestRetry = this::retryPendingPhoneSessionRequest;
+  private final Runnable wearableConnectionRetry = this::retryWearableConnection;
   private static final int MAX_PHONE_SESSION_REQUEST_ATTEMPTS = 5;
   private static final long PHONE_SESSION_REQUEST_RETRY_DELAY_MS = 1_000L;
   private Bundle lastCreatedWorkoutEvent;
@@ -194,6 +198,8 @@ public class TrackerWear extends DefaultTrackerComponent
   @Override
   public TrackerComponent.ResultCode onInit(final Callback callback, Context context) {
     this.context = context;
+    wearableConnectionActive = true;
+    wearableConnectionRetryAttempt = 0;
     sessionEventStore = new WorkoutSessionEventJournalStore(context.getApplicationContext());
     if (!hasPlay()) {
       return ResultCode.RESULT_NOT_SUPPORTED;
@@ -207,29 +213,70 @@ public class TrackerWear extends DefaultTrackerComponent
                 new GoogleApiClient.ConnectionCallbacks() {
                   @Override
                   public void onConnected(Bundle connectionHint) {
+                    handler.removeCallbacks(wearableConnectionRetry);
+                    wearableConnectionRetryAttempt = 0;
                     callback.run(TrackerWear.this, ResultCode.RESULT_OK);
 
                     /* set "our" data */
                     setData();
 
-                    Wearable.MessageApi.addListener(mGoogleApiClient, TrackerWear.this);
-                    Wearable.DataApi.addListener(mGoogleApiClient, TrackerWear.this);
+                    if (!wearableListenersRegistered) {
+                      Wearable.MessageApi.addListener(mGoogleApiClient, TrackerWear.this);
+                      Wearable.DataApi.addListener(mGoogleApiClient, TrackerWear.this);
+                      wearableListenersRegistered = true;
+                    }
 
                     /* read already existing data */
                     readData();
+                    replayLastWorkoutEvent();
 
                     /* get info about connected nodes in background */
                   }
 
                   @Override
-                  public void onConnectionSuspended(int cause) {}
+                  public void onConnectionSuspended(int cause) {
+                    wearableListenersRegistered = false;
+                    scheduleWearableReconnect("connection suspended: " + cause);
+                  }
                 })
             .addOnConnectionFailedListener(
-                result -> callback.run(TrackerWear.this, ResultCode.RESULT_ERROR))
+                result -> {
+                  callback.run(TrackerWear.this, ResultCode.RESULT_ERROR);
+                  scheduleWearableReconnect("connection failed: " + result.getErrorCode());
+                })
             .addApi(Wearable.API)
             .build();
     mGoogleApiClient.connect();
     return ResultCode.RESULT_PENDING;
+  }
+
+  private void scheduleWearableReconnect(String reason) {
+    if (!wearableConnectionActive || mGoogleApiClient == null) return;
+    long delayMs =
+        WearConnectionRetryPolicy.delayForAttempt(wearableConnectionRetryAttempt++);
+    Log.w(getName(), "Wear connection lost (" + reason + "); retrying in " + delayMs + " ms");
+    handler.removeCallbacks(wearableConnectionRetry);
+    handler.postDelayed(wearableConnectionRetry, delayMs);
+  }
+
+  private void retryWearableConnection() {
+    GoogleApiClient client = mGoogleApiClient;
+    if (!wearableConnectionActive
+        || client == null
+        || client.isConnected()
+        || client.isConnecting())
+      return;
+    try {
+      client.connect();
+    } catch (RuntimeException exception) {
+      Log.w(getName(), "Unable to restart Wear connection", exception);
+      scheduleWearableReconnect("reconnect request failed");
+    }
+  }
+
+  private void replayLastWorkoutEvent() {
+    if (lastCreatedWorkoutEvent == null) lastCreatedWorkoutEvent = lastSentWorkoutEvent;
+    if (lastCreatedWorkoutEvent != null) sendWorkoutEvent();
   }
 
   private void readData() {
@@ -886,6 +933,8 @@ public class TrackerWear extends DefaultTrackerComponent
 
   @Override
   public ResultCode onEnd(Callback callback, Context context) {
+    wearableConnectionActive = false;
+    handler.removeCallbacks(wearableConnectionRetry);
     handler.removeCallbacks(pendingPhoneSessionRequestRetry);
     pendingPhoneSessionRequest = null;
     pendingPhoneSessionRequestAttempts = 0;
@@ -898,13 +947,16 @@ public class TrackerWear extends DefaultTrackerComponent
         clearData(true);
         wearNode = null;
 
-        Wearable.MessageApi.removeListener(mGoogleApiClient, this);
-        Wearable.DataApi.removeListener(mGoogleApiClient, this);
+        if (wearableListenersRegistered) {
+          Wearable.MessageApi.removeListener(mGoogleApiClient, this);
+          Wearable.DataApi.removeListener(mGoogleApiClient, this);
+        }
         // connectedNodes.clear();
       }
       mGoogleApiClient.disconnect();
       mGoogleApiClient = null;
     }
+    wearableListenersRegistered = false;
     if (mWearableClient != null) {
       mWearableClient = null;
     }
