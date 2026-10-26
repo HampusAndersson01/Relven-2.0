@@ -27,7 +27,7 @@ python tools/test_build_ai_plan_kit.py
 python tools/build_ai_plan_kit.py --check
 ```
 
-The phone APK is `app/build/outputs/apk/latest/debug/app-latest-debug.apk`; the Wear APK is `wear/build/outputs/apk/debug/wear-debug.apk`. Install them on their matching emulators or devices and pair the devices normally. The latest master debug APKs were built from commit `c8a35c94` on 26 October 2026. On an isolated emulator, an imported and activated plan was started from its selected calendar workout, and the active session showed the plan's own steps rather than the bundled default workout. Paired phone/Wear behavior has not been verified; no physical-device ADB commands were issued during this checkpoint.
+The phone APK is `app/build/outputs/apk/latest/debug/app-latest-debug.apk`; the Wear APK is `wear/build/outputs/apk/debug/wear-debug.apk`. Install them on their matching emulators or devices and pair the devices normally. The latest master debug APKs were rebuilt from commit `a3b32c51` on 26 October 2026. Planned workout launch and workout review have been exercised on isolated emulators. Paired phone/Wear behavior has not been verified; no physical-device ADB commands were issued during this checkpoint.
 
 Release phone and Wear variants retain the original Play application ID `se.hampusandersson.relven`; debug adds `.debug` and the free phone variant adds `.free`. The current local release App Bundles are unsigned; building them does not verify the Play upload key or establish that an in-place upgrade will be accepted. The internal publishing workflow performs signature/package/version checks before upload. Internal `org.runnerup` namespaces and wearable protocol paths remain for compatibility.
 
@@ -43,9 +43,9 @@ Workout and activity data is stored locally by the inherited engine and Relven's
 
 ## Status and release gates
 
-On 26 October 2026, master commit `e56b6c31` passed the merged PR #200 workflow and the app's 740-test local unit suite; phone and Wear debug APKs were rebuilt and launched in isolated emulators. Release manifests retain the Play application ID. Local release App Bundles are unsigned, and the configured signing secret did not match the existing Play upload certificate in signing-only validation, so an in-place upgrade is not verified and no upload was performed.
+On 26 October 2026, PR #209 merged to master as `a3b32c51`; its hosted Android/F-Droid workflow passed. Local common, phone, and Wear tests; phone/Wear lint; Spotless; and both debug APK builds passed. The exact current APK hashes and test details are in the [implementation status](docs/implementation-status.md). Release manifests retain the Play application ID `se.hampusandersson.relven`.
 
-Remaining release gates include testing a copied production-era legacy v18 backup, validating a signed same-ID upgrade with the existing upload key, checking Play's current version-code and signing state, and completing paired-Wear and final device checks. The owner's physical ADB device remains reserved until the app is ready for manual testing. See the [implementation status](docs/implementation-status.md) and [roadmap](docs/roadmap.md) for evidence and open work.
+Remaining release gates include replacing the mismatched repository keystore secret with the original upload key, testing a copied production-era legacy v18 backup, validating a signed same-ID upgrade, checking Play's current version-code and signing state, and completing paired-Wear and final device checks. No Play upload has occurred. The owner's physical ADB device remains reserved until all product phases are complete and manual testing is ready. See the [implementation status](docs/implementation-status.md) and [Play publishing guide](docs/play-internal-publishing.md) for evidence and required steps.
 
 ## Upstream, license and contributions
 
