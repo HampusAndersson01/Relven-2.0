@@ -260,6 +260,37 @@ jobs:
           echo "Phone and Wear bundles use the same upload certificate."
           echo "Phone and Wear bundles match the current Play Console upload certificate." >> "$GITHUB_STEP_SUMMARY"
 
+      # Keep manually uploadable, signed AABs even if a later Play API publish step fails.
+      # Both bundles and their certificates were validated by the preceding step.
+      - name: Save signed phone AAB for manual Play upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relven-phone-signed-${{ inputs.phone_version_code }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/bundle/latestRelease/app-latest-release.aab
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Save signed Wear OS AAB for manual Play upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relven-wear-signed-${{ inputs.phone_version_code }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wear/build/outputs/bundle/release/wear-release.aab
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Explain how to download the signed AABs
+        shell: bash
+        run: |
+          {
+            echo "## Signed Play AAB downloads"
+            echo "Both AABs passed bundle, package/version and upload-certificate validation."
+            echo "Download the **relven-phone-signed-*** and **relven-wear-signed-*** ZIP archives under **Artifacts** on this workflow run and extract the AAB from each."
+            echo "Manual Play Console upload: use the phone AAB for **Phones, tablets and desktop** and the Wear AAB for **Wear OS**."
+            echo "Artifacts are retained for 14 days. **VALIDATE_SIGNING_ONLY** does not publish through Google Play."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish Wear OS bundle to Play Internal Testing
         if: inputs.confirm == 'PUBLISH_INTERNAL'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
