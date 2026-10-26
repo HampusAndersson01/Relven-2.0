@@ -244,7 +244,7 @@ jobs:
 
           phone_cert=$(keytool '-J-Duser.language=en' '-J-Duser.country=US' -printcert -jarfile "$phone_aab" 2>/dev/null | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
           wear_cert=$(keytool '-J-Duser.language=en' '-J-Duser.country=US' -printcert -jarfile "$wear_aab" 2>/dev/null | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
-          expected_upload_cert=08e72eaf13242389ea4c4e64965a5b0aac337c8792bfc8b5f52cfa8af02f9a89
+          expected_upload_cert=acbe3aa08ff36fea31581156b14b2f69f1735161eae3e34f7153126c3dc62f99
           {
             echo "## Relven upload certificate validation"
             printf 'Expected existing Play upload certificate SHA-256 (lowercase, no separators): `%s`\n' "$expected_upload_cert"
@@ -254,11 +254,11 @@ jobs:
           test -n "$phone_cert"
           test "$phone_cert" = "$wear_cert"
           if [[ "$phone_cert" != "$expected_upload_cert" ]]; then
-            echo "Phone and Wear bundles do not use the upload certificate from the existing Relven Play release." >&2
+            echo "Phone and Wear bundles do not match the current Google Play Console upload certificate." >&2
             exit 1
           fi
           echo "Phone and Wear bundles use the same upload certificate."
-          echo "Phone and Wear bundles match the existing Play upload certificate." >> "$GITHUB_STEP_SUMMARY"
+          echo "Phone and Wear bundles match the current Play Console upload certificate." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish Wear OS bundle to Play Internal Testing
         if: inputs.confirm == 'PUBLISH_INTERNAL'
