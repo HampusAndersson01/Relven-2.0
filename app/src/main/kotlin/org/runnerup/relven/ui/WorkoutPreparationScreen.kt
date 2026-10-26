@@ -29,7 +29,8 @@ internal fun WorkoutPreparationScreen(
     state: WorkoutPreparationUiState,
     trackerReady: Boolean,
     gpsReadiness: GpsPreparationUiState = GpsPreparationUiState(GpsPreparationStatus.NOT_REQUIRED),
-    selectedWorkoutAvailable: Boolean = true,
+    selectedWorkoutRestoreState: SelectedWorkoutRestoreState =
+        SelectedWorkoutRestoreState.AVAILABLE,
     onStart: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -78,13 +79,19 @@ internal fun WorkoutPreparationScreen(
           modifier = Modifier.padding(18.dp),
           horizontalArrangement = Arrangement.spacedBy(12.dp),
           verticalAlignment = Alignment.CenterVertically) {
-        if (state.phase == WorkoutPreparationPhase.PREPARING) {
+        if (state.phase == WorkoutPreparationPhase.PREPARING ||
+            selectedWorkoutRestoreState == SelectedWorkoutRestoreState.RESTORING) {
           CircularProgressIndicator(
               modifier = Modifier.size(20.dp), color = RelvenColors.Orange, strokeWidth = 2.dp)
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
           Text(state.status, color = RelvenColors.Text, fontWeight = FontWeight.SemiBold)
-          if (!selectedWorkoutAvailable) {
+          if (selectedWorkoutRestoreState == SelectedWorkoutRestoreState.RESTORING) {
+            Text(
+                "Återställer valt pass…",
+                color = RelvenColors.MutedText,
+                fontSize = 13.sp)
+          } else if (selectedWorkoutRestoreState == SelectedWorkoutRestoreState.FAILED) {
             Text(
                 "Passet kunde inte återställas. Avbryt och välj passet igen.",
                 color = RelvenColors.MutedText,
@@ -142,14 +149,17 @@ internal fun WorkoutPreparationScreen(
         enabled =
                 state.phase == WorkoutPreparationPhase.READY &&
                 trackerReady &&
-                selectedWorkoutAvailable,
+                selectedWorkoutRestoreState == SelectedWorkoutRestoreState.AVAILABLE,
         modifier = Modifier.fillMaxWidth().height(58.dp),
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(containerColor = RelvenColors.Orange)) {
       Text(
           text =
               when {
-                !selectedWorkoutAvailable -> "Passet kunde inte återställas"
+                selectedWorkoutRestoreState == SelectedWorkoutRestoreState.RESTORING ->
+                    "Förbereder träningsmotorn"
+                selectedWorkoutRestoreState == SelectedWorkoutRestoreState.FAILED ->
+                    "Passet kunde inte återställas"
                 state.phase == WorkoutPreparationPhase.START_REQUESTED -> "Väntar på klockan"
                 state.phase == WorkoutPreparationPhase.CANCEL_REQUESTED -> "Avbryter nedräkning"
                 state.phase == WorkoutPreparationPhase.COUNTDOWN -> "Startar om ${state.countdownValue}"
