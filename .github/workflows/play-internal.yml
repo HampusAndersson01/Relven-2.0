@@ -247,9 +247,9 @@ jobs:
           expected_upload_cert=08e72eaf13242389ea4c4e64965a5b0aac337c8792bfc8b5f52cfa8af02f9a89
           {
             echo "## Relven upload certificate validation"
-            echo "Expected existing Play upload certificate SHA-256 (lowercase, no separators): `$expected_upload_cert`"
-            echo "Phone bundle certificate SHA-256 (lowercase, no separators): `${phone_cert:-unavailable}`"
-            echo "Wear bundle certificate SHA-256 (lowercase, no separators): `${wear_cert:-unavailable}`"
+            printf 'Expected existing Play upload certificate SHA-256 (lowercase, no separators): `%s`\n' "$expected_upload_cert"
+            printf 'Phone bundle certificate SHA-256 (lowercase, no separators): `%s`\n' "${phone_cert:-unavailable}"
+            printf 'Wear bundle certificate SHA-256 (lowercase, no separators): `%s`\n' "${wear_cert:-unavailable}"
           } >> "$GITHUB_STEP_SUMMARY"
           test -n "$phone_cert"
           test "$phone_cert" = "$wear_cert"

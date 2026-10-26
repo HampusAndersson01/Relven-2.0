@@ -98,6 +98,19 @@ class PlayInternalWorkflowTest(unittest.TestCase):
         key_comparison = verification.index('if [[ "$phone_cert" != "$expected_upload_cert" ]]')
         self.assertLess(summary_write, key_comparison)
 
+    def test_certificate_fingerprints_are_written_without_shell_backtick_expansion(self):
+        verification = step_block(self.workflow, "Verify Play bundles before upload")
+        for label, argument in (
+            ("Expected existing Play upload certificate", "$expected_upload_cert"),
+            ("Phone bundle certificate", "${phone_cert:-unavailable}"),
+            ("Wear bundle certificate", "${wear_cert:-unavailable}"),
+        ):
+            with self.subTest(label=label):
+                self.assertIn(
+                    f"printf '{label} SHA-256 (lowercase, no separators): `%s`\\n' \"{argument}\"",
+                    verification,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
