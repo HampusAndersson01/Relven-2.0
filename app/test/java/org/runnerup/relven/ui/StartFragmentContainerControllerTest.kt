@@ -1,12 +1,18 @@
 package org.runnerup.relven.ui
 
+import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -47,5 +53,71 @@ class StartFragmentContainerControllerTest {
 
     controller.updatePlannedWorkout(null)
     assertNull(deliveredWorkout)
+  }
+
+  @Test
+  fun attachesExistingStartFragmentToReplacementContainerAfterDestinationIsRecreated() {
+    val activity = Robolectric.buildActivity(FragmentActivity::class.java).setup().get()
+    val containerId = View.generateViewId()
+    val firstContainer = FragmentContainerView(activity).apply { id = containerId }
+    val firstController =
+        StartFragmentContainerController(
+            firstContainer,
+            activity.supportFragmentManager,
+            fragmentFactory = { ContainerContentFragment() },
+            onFragmentReady = { _, _ -> })
+
+    firstController.updatePlannedWorkout(null)
+    activity.setContentView(firstContainer)
+    Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    val startFragment = activity.supportFragmentManager.findFragmentById(containerId)
+    assertNotNull(startFragment)
+    activity.setContentView(FrameLayout(activity))
+    Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+    assertTrue(isDescendantOf(startFragment?.view, firstContainer))
+
+    val replacementContainer = FragmentContainerView(activity).apply { id = containerId }
+    val replacementController =
+        StartFragmentContainerController(
+            replacementContainer,
+            activity.supportFragmentManager,
+            fragmentFactory = { ContainerContentFragment() },
+            onFragmentReady = { _, _ -> })
+    replacementController.updatePlannedWorkout(null)
+    activity.setContentView(replacementContainer)
+    Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertSame(startFragment, activity.supportFragmentManager.findFragmentById(containerId))
+    assertTrue(
+        "Replacement container did not host the Fragment view; parent chain=${describeParents(startFragment?.view)}, childCount=${replacementContainer.childCount}",
+        isDescendantOf(startFragment?.view, replacementContainer))
+    assertEquals(1, replacementContainer.childCount)
+  }
+
+  private fun isDescendantOf(view: View?, ancestor: View): Boolean {
+    var current = view
+    while (current != null) {
+      if (current === ancestor) return true
+      current = current.parent as? View
+    }
+    return false
+  }
+
+  private fun describeParents(view: View?): String {
+    val parents = mutableListOf<String>()
+    var current = view
+    while (current != null) {
+      parents += "${current.javaClass.simpleName}#${current.id}"
+      current = current.parent as? View
+    }
+    return parents.joinToString(" -> ")
+  }
+
+  class ContainerContentFragment : Fragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?): View = View(requireContext())
   }
 }

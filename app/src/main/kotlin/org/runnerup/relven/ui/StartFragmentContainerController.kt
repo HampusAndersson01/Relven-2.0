@@ -40,6 +40,31 @@ internal class StartFragmentContainerController(
         replace(container.id, fragmentFactory())
       }
     }
-    fragmentManager.findFragmentById(container.id)?.let { onFragmentReady(it, plannedWorkout) }
+    fragmentManager.findFragmentById(container.id)?.let { fragment ->
+      val fragmentView = fragment.view
+      if (fragmentView != null && fragmentView.parent != null && !isDescendantOf(fragmentView, container)) {
+        // Compose can dispose this AndroidView while the Fragment remains registered with the
+        // activity. Recreate its view in the newly attached container, preserving the Fragment
+        // instance and its saved view state.
+        fragmentManager.commitNow {
+          setReorderingAllowed(true)
+          detach(fragment)
+        }
+        fragmentManager.commitNow {
+          setReorderingAllowed(true)
+          attach(fragment)
+        }
+      }
+      onFragmentReady(fragment, plannedWorkout)
+    }
+  }
+
+  private fun isDescendantOf(view: View, ancestor: View): Boolean {
+    var current: View? = view
+    while (current != null) {
+      if (current === ancestor) return true
+      current = current.parent as? View
+    }
+    return false
   }
 }
