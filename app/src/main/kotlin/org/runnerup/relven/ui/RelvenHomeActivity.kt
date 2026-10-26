@@ -384,6 +384,8 @@ class RelvenHomeActivity : FragmentActivity(), GymWorkoutStarter {
         if (currentStrengthSession != null || completionSummary != null) {
           StrengthSessionScreen(
               session = currentStrengthSession ?: requireNotNull(completionSummary).state,
+              exerciseCatalog =
+                  (exerciseCatalogLoadState as? ExerciseCatalogLoadState.Loaded)?.catalog,
               completedAtMillis = completionSummary?.finishedAtMillis,
               saveError = strengthSaveError,
               isSavingProgress = strengthTransitionSaving,

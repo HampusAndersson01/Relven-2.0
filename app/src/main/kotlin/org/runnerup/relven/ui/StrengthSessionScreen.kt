@@ -53,12 +53,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import kotlinx.coroutines.delay
 import org.runnerup.common.R
+import org.runnerup.relven.exercise.ExerciseCatalog
 import org.runnerup.relven.strength.StrengthSession
 import org.runnerup.relven.strength.strengthSessionSummary
 
 @Composable
 internal fun StrengthSessionScreen(
     session: StrengthSession,
+    exerciseCatalog: ExerciseCatalog? = null,
     completedAtMillis: Long?,
     saveError: Boolean,
     isSavingProgress: Boolean,
@@ -137,7 +139,17 @@ internal fun StrengthSessionScreen(
               stringResource(R.string.Strength_session_pending_result),
               color = RelvenColors.Orange,
               fontWeight = FontWeight.SemiBold)
-          Text(pending.exerciseName, color = RelvenColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+          val pendingExercise = session.workout.exercises().getOrNull(pending.exerciseIndex)
+          val pendingPresentation =
+              pendingExercise?.let {
+                planExercisePresentation(
+                    it.exerciseId(), it.name(), it.instructions(), exerciseCatalog)
+              }
+          Text(
+              pendingPresentation?.name ?: pending.exerciseName,
+              color = RelvenColors.Text,
+              fontSize = 22.sp,
+              fontWeight = FontWeight.Bold)
           RepetitionCountEntry(
               key = "${session.executionId}:${pending.exerciseIndex}:${pending.setNumber}",
               isSaving = isSavingProgress,
@@ -155,6 +167,7 @@ internal fun StrengthSessionScreen(
     if (completed || session.phase == StrengthSession.Phase.COMPLETE) {
       SessionResultsSummary(
           session = session,
+          exerciseCatalog = exerciseCatalog,
           editingResultKey = editingResultKey,
           isSaving = isSavingProgress,
           onBeginEdit = { editingResultKey = it.editIdentity(session.executionId) },
@@ -189,13 +202,30 @@ internal fun StrengthSessionScreen(
     } else {
       exercise?.let {
         val totalSets = it.sets()
+        val presentation =
+            planExercisePresentation(it.exerciseId(), it.name(), it.instructions(), exerciseCatalog)
         Surface(
             color = RelvenColors.Surface,
             shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth()) {
           Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(it.name(), color = RelvenColors.Text, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-            Text(it.instructions(), color = RelvenColors.MutedText, fontSize = 16.sp)
+            Text(presentation.name, color = RelvenColors.Text, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            presentation.instructionSteps.forEachIndexed { stepIndex, instruction ->
+              Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(10.dp),
+                  verticalAlignment = Alignment.Top) {
+                Text(
+                    "${stepIndex + 1}.",
+                    color = RelvenColors.Orange,
+                    fontWeight = FontWeight.SemiBold)
+                Text(
+                    instruction,
+                    modifier = Modifier.weight(1f),
+                    color = RelvenColors.MutedText,
+                    fontSize = 16.sp)
+              }
+            }
             Text(
                 stringResource(
                     R.string.Plan_calendar_strength_prescription,
@@ -301,8 +331,14 @@ internal fun StrengthSessionScreen(
                 if (session.setNumber < it.sets()) it
                 else session.workout.exercises().getOrNull(session.exerciseIndex + 1)
             if (nextExercise != null) {
+              val nextPresentation =
+                  planExercisePresentation(
+                      nextExercise.exerciseId(),
+                      nextExercise.name(),
+                      nextExercise.instructions(),
+                      exerciseCatalog)
               Text(
-                  stringResource(R.string.Strength_session_next, nextExercise.name()),
+                  stringResource(R.string.Strength_session_next, nextPresentation.name),
                   color = RelvenColors.MutedText)
             }
             if (session.phase != StrengthSession.Phase.PAUSED &&
@@ -340,6 +376,7 @@ internal fun StrengthSessionScreen(
 @Composable
 private fun SessionResultsSummary(
     session: StrengthSession,
+    exerciseCatalog: ExerciseCatalog?,
     editingResultKey: String?,
     isSaving: Boolean,
     onBeginEdit: (StrengthSession.SetResult) -> Unit,
@@ -396,12 +433,20 @@ private fun SessionResultsSummary(
 
     summary.exercises.forEach { exerciseSummary ->
       val exerciseResults = session.results.filter { it.exerciseIndex == exerciseSummary.exerciseIndex }
+      val exercise = session.workout.exercises().getOrNull(exerciseSummary.exerciseIndex)
+      val exercisePresentation =
+          exercise?.let {
+            planExercisePresentation(it.exerciseId(), it.name(), it.instructions(), exerciseCatalog)
+          }
       Surface(
           color = RelvenColors.Surface,
           shape = RoundedCornerShape(20.dp),
           modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text(exerciseSummary.exerciseName, color = RelvenColors.Text, fontWeight = FontWeight.SemiBold)
+          Text(
+              exercisePresentation?.name ?: exerciseSummary.exerciseName,
+              color = RelvenColors.Text,
+              fontWeight = FontWeight.SemiBold)
           Text(
               stringResource(
                   R.string.Strength_session_summary_set_progress,
