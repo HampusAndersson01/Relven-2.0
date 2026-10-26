@@ -7,11 +7,6 @@ on:
         description: Type VALIDATE_SIGNING_ONLY or PUBLISH_INTERNAL
         required: true
         type: string
-      phone_version_code:
-        description: Even phone version code, greater than every code already uploaded in Play Console; Wear uses the next code
-        required: true
-        default: '24000376'
-        type: string
 
 permissions:
   contents: read
@@ -42,24 +37,40 @@ jobs:
           cache-provider: basic
           validate-wrappers: true
 
-      - name: Validate phone Play version code
-        env:
-          PHONE_VERSION_CODE: ${{ inputs.phone_version_code }}
+      - name: Generate automatic Play version codes
+        id: version_codes
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_ENV"
+          python3 - <<'PY'
           import os
-          import re
-          import sys
+          from datetime import datetime, timezone
 
-          value = os.environ.get("PHONE_VERSION_CODE", "")
-          if not re.fullmatch(r"[0-9]+", value):
-              sys.exit("phone_version_code must contain decimal digits only")
-          phone_code = int(value)
-          if phone_code <= 24000374 or phone_code % 2 != 0 or phone_code > 2099999998:
-              sys.exit("phone_version_code must be even, greater than 24000374, and leave room for Wear's +1 code")
-          print(f"RELVEN_PLAY_VERSION_CODE={phone_code}")
+          # A new UTC-second allocation for every build (including rerun attempts).
+          # Reserve even codes for phone, the next odd code for Wear OS.
+          epoch = datetime(2026, 1, 1, tzinfo=timezone.utc)
+          elapsed_seconds = int((datetime.now(timezone.utc) - epoch).total_seconds())
+          if elapsed_seconds < 0:
+              raise SystemExit("Runner clock predates the 2026 version-code epoch")
+          phone_code = 24_000_376 + elapsed_seconds * 2
+          wear_code = phone_code + 1
+          if wear_code > 2_100_000_000:
+              raise SystemExit("Automatically generated version codes exceed the Google Play limit")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as target:
+              target.write(f"RELVEN_PLAY_VERSION_CODE={phone_code}\n")
+              target.write(f"RELVEN_WEAR_VERSION_CODE={wear_code}\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as target:
+              target.write(f"phone={phone_code}\n")
+              target.write(f"wear={wear_code}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as target:
+              target.write("## Automatic Play version codes\n")
+              target.write(f"- Phone: `{phone_code}`\n")
+              target.write(f"- Wear OS: `{wear_code}`\n")
+              target.write("Generated at build time (UTC). Reruns allocate new codes.\n")
+
+          print(f"Phone versionCode: {phone_code}")
+          print(f"Wear versionCode: {wear_code}")
           PY
 
       - name: Setup Android SDK
@@ -168,14 +179,12 @@ jobs:
         run: curl --fail --silent --show-error --location https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar --output "$RUNNER_TEMP/bundletool.jar"
 
       - name: Run tests, release lint, and build signed bundles
-        env:
-          PHONE_VERSION_CODE: ${{ inputs.phone_version_code }}
         shell: bash
         run: >-
           ./gradlew --no-daemon test
           :app:lintLatestRelease :wear:lintRelease :hrdevice:lintRelease :common:lintRelease
           :app:bundleLatestRelease :wear:bundleRelease
-          -PrelvenPlayVersionCode="$PHONE_VERSION_CODE"
+          -PrelvenPlayVersionCode="$RELVEN_PLAY_VERSION_CODE"
 
       - name: Verify Play bundles before upload
         shell: bash
@@ -265,7 +274,7 @@ jobs:
       - name: Save signed phone AAB for manual Play upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: relven-phone-signed-${{ inputs.phone_version_code }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: relven-phone-signed-${{ steps.version_codes.outputs.phone }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: app/build/outputs/bundle/latestRelease/app-latest-release.aab
           if-no-files-found: error
           retention-days: 14
@@ -274,7 +283,7 @@ jobs:
       - name: Save signed Wear OS AAB for manual Play upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: relven-wear-signed-${{ inputs.phone_version_code }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: relven-wear-signed-${{ steps.version_codes.outputs.phone }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: wear/build/outputs/bundle/release/wear-release.aab
           if-no-files-found: error
           retention-days: 14
