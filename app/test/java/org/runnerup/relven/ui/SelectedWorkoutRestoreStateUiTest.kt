@@ -2,6 +2,7 @@ package org.runnerup.relven.ui
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -67,6 +68,35 @@ class SelectedWorkoutRestoreStateUiTest {
     composeRule.onNodeWithText("Ett annat pass behöver avslutas först.").assertExists()
     composeRule.onNodeWithText("Öppna pågående pass").assertHasClickAction()
     composeRule.onNodeWithText("Avsluta pågående pass först").assertIsNotEnabled()
+  }
+
+  @Test
+  fun runningWorkoutWaitsForGpsBeforeEnablingCountdown() {
+    composeRule.setContent {
+      WorkoutPreparationScreen(
+          state = preparationUiState().copy(phase = WorkoutPreparationPhase.READY),
+          trackerReady = true,
+          gpsReadiness = GpsPreparationUiState(GpsPreparationStatus.SEARCHING),
+          onStart = {},
+          onCancel = {})
+    }
+
+    composeRule.onNodeWithText("Väntar på GPS").assertIsNotEnabled()
+    composeRule.onNodeWithText("Söker GPS-signal · passet startar när GPS är redo").assertExists()
+  }
+
+  @Test
+  fun runningWorkoutEnablesCountdownAfterGpsIsReady() {
+    composeRule.setContent {
+      WorkoutPreparationScreen(
+          state = preparationUiState().copy(phase = WorkoutPreparationPhase.READY),
+          trackerReady = true,
+          gpsReadiness = GpsPreparationUiState(GpsPreparationStatus.READY, accuracyMeters = 8f),
+          onStart = {},
+          onCancel = {})
+    }
+
+    composeRule.onNodeWithText("Starta pass · 3 sek nedräkning").assertHasClickAction().assertIsEnabled()
   }
 
   private fun preparationUiState() =

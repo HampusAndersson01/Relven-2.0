@@ -6,6 +6,18 @@ import org.junit.Test
 
 class GpsPreparationPresentationTest {
   @Test
+  fun runningWorkoutCanStartOnlyAfterUsableGpsFix() {
+    assertEquals(false, state(GpsPreparationStatus.PERMISSION_REQUIRED).canStartWorkout)
+    assertEquals(false, state(GpsPreparationStatus.UNAVAILABLE).canStartWorkout)
+    assertEquals(false, state(GpsPreparationStatus.DISABLED).canStartWorkout)
+    assertEquals(false, state(GpsPreparationStatus.SEARCHING).canStartWorkout)
+    assertEquals(false, state(GpsPreparationStatus.FIX_ACQUIRED).canStartWorkout)
+    assertEquals(false, state(GpsPreparationStatus.ACCURACY_INSUFFICIENT).canStartWorkout)
+    assertEquals(true, state(GpsPreparationStatus.READY).canStartWorkout)
+    assertEquals(true, state(GpsPreparationStatus.NOT_REQUIRED).canStartWorkout)
+  }
+
+  @Test
   fun gpsFreeWorkoutDoesNotShowGpsReadiness() {
     val state =
       GpsPreparationPresentation.create(
@@ -106,4 +118,6 @@ class GpsPreparationPresentationTest {
       locationReceived = true,
       accuracyMeters = accuracyMeters,
     )
+
+  private fun state(status: GpsPreparationStatus) = GpsPreparationUiState(status)
 }
