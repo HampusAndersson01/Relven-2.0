@@ -5,14 +5,18 @@ import org.runnerup.common.tracker.TrackerState
 internal enum class SelectedWorkoutRestoreState {
   RESTORING,
   AVAILABLE,
+  EXISTING_SESSION,
   FAILED
 }
 
 internal fun selectedWorkoutRestoreState(
     restorePending: Boolean,
-    available: Boolean
+    available: Boolean,
+    trackerState: TrackerState? = null
 ): SelectedWorkoutRestoreState =
     when {
+      trackerState != null && WorkoutPreparationTrackerPolicy.hasExistingWorkout(trackerState) ->
+          SelectedWorkoutRestoreState.EXISTING_SESSION
       restorePending -> SelectedWorkoutRestoreState.RESTORING
       available -> SelectedWorkoutRestoreState.AVAILABLE
       else -> SelectedWorkoutRestoreState.FAILED
@@ -20,6 +24,12 @@ internal fun selectedWorkoutRestoreState(
 
 /** Connects RunnerUp's existing engine during preparation without starting workout recording. */
 internal object WorkoutPreparationTrackerPolicy {
+  fun hasExistingWorkout(state: TrackerState): Boolean =
+      state == TrackerState.STARTED || state == TrackerState.PAUSED || state == TrackerState.STOPPED
+
+  fun shouldAttachWearSession(workoutAvailable: Boolean, state: TrackerState): Boolean =
+      workoutAvailable && state == TrackerState.CONNECTED
+
   fun shouldConnect(state: TrackerState): Boolean =
       state == TrackerState.INIT ||
           state == TrackerState.INITIALIZING ||
