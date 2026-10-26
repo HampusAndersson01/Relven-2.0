@@ -307,7 +307,7 @@ jobs:
           serviceAccountJson: ${{ runner.temp }}/google-play-service-account.json
           packageName: se.hampusandersson.relven
           releaseFiles: wear/build/outputs/bundle/release/wear-release.aab
-          tracks: wear:internal
+          tracks: wear:qa
           status: completed
 
       - name: Publish phone bundle to Play Internal Testing
@@ -317,7 +317,7 @@ jobs:
           serviceAccountJson: ${{ runner.temp }}/google-play-service-account.json
           packageName: se.hampusandersson.relven
           releaseFiles: app/build/outputs/bundle/latestRelease/app-latest-release.aab
-          tracks: internal
+          tracks: qa
           status: completed
 
       - name: Remove temporary credentials
