@@ -192,8 +192,22 @@ internal fun PlanWorkoutDetailsScreen(
               Text(
                   stringResource(R.string.Plan_calendar_strength_rest, exercise.restSeconds()),
                   color = RelvenColors.MutedText)
-              presentation.instructions.takeIf(String::isNotBlank)?.let {
-                Text(it, lineHeight = 22.sp, color = RelvenColors.MutedText)
+              presentation.instructionSteps.forEachIndexed { stepIndex, instruction ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top) {
+                  Text(
+                      "${stepIndex + 1}.",
+                      lineHeight = 22.sp,
+                      color = RelvenColors.Orange,
+                      fontWeight = FontWeight.SemiBold)
+                  Text(
+                      instruction,
+                      modifier = Modifier.weight(1f),
+                      lineHeight = 22.sp,
+                      color = RelvenColors.MutedText)
+                }
               }
             }
           }
