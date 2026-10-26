@@ -3,6 +3,7 @@ package org.runnerup.relven.ui
 import android.content.Intent
 import java.io.StringReader
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -14,6 +15,21 @@ import org.runnerup.workout.WorkoutSerializer
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class PlannedRunningWorkoutLaunchTest {
+  @Test
+  fun preparationIntentRestoresSerializedWorkoutByDefault() {
+    val intent =
+        WorkoutPreparationActivity.intent(
+            RuntimeEnvironment.getApplication(),
+            "7f98c963-275b-4e9d-9c81-f19c3c3f6c62",
+            "Running",
+            "First step",
+            "{}",
+            org.runnerup.common.util.Constants.DB.ACTIVITY.SPORT_RUNNING,
+            org.runnerup.common.util.Constants.WORKOUT_TYPE.BASIC)
+
+    assertTrue(intent.getBooleanExtra(WorkoutPreparationActivity.EXTRA_RESTORE_WORKOUT_FROM_INTENT, false))
+  }
+
   @Test
   fun planLaunchCarriesTheSelectedDefinitionAndUsesPreparationScreen() {
     val plan =

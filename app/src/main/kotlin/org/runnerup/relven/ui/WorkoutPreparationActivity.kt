@@ -718,7 +718,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         workoutJson: String,
         sport: Int,
         workoutType: Int,
-        restoreWorkoutFromIntent: Boolean = false
+        restoreWorkoutFromIntent: Boolean = true
     ): Intent =
         Intent(context, WorkoutPreparationActivity::class.java)
             .putExtra(EXTRA_SESSION_ID, sessionId)
