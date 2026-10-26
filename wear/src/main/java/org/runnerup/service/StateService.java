@@ -1019,18 +1019,24 @@ public class StateService extends Service
       String commandId,
       long issuedAtElapsedRealtimeMs) {
     boolean connected = checkConnection() == null;
-    // RunnerUp on the phone is the recording engine. Until the watch can enact controls locally,
-    // do not show an offline pause/finish as accepted while the phone keeps recording.
-    if (!connected) return false;
-    if (action == WorkoutSessionProtocol.Action.START
-        && !hasFreshClockOffset(android.os.SystemClock.elapsedRealtime())) {
-      requestClockSync();
+    boolean clockSynchronized =
+        action != WorkoutSessionProtocol.Action.START
+            || hasFreshClockOffset(android.os.SystemClock.elapsedRealtime());
+    if (!WatchSessionCommandAdmissionPolicy.canCommitLocally(
+        action, connected, clockSynchronized)) {
+      if (action == WorkoutSessionProtocol.Action.START && !clockSynchronized) {
+        requestClockSync();
+      }
       return false;
     }
-    if (pendingPhoneProjection != null) {
+    // A new start must not overtake events from the previous session. Controls for the current
+    // session can still be committed: the durable journal is an ordered outbox, not a lock.
+    if (WatchSessionCommandAdmissionPolicy.mustWaitForPendingProjection(action)
+        && pendingPhoneProjection != null) {
       retryPendingPhoneProjection();
       return false;
     }
+    if (workoutSessionState == null || workoutSessionId == null) return false;
     try {
       WorkoutSessionProtocol.Command command =
           new WorkoutSessionProtocol.Command(
