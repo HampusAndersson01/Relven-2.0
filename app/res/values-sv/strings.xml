@@ -224,4 +224,9 @@
     <string name="gym_workout_default_name">Gympass</string>
     <string name="gym_workout_error_title">Passet kunde inte startas</string>
     <string name="gym_number_invalid">Ange ett värde inom tillåtet intervall.</string>
+    <string name="workout_activity_permission_title">Tillåt träningsspårning</string>
+    <string name="workout_activity_permission_message">Android behöver behörigheten för att hålla passet aktivt i bakgrunden när platsåtkomst inte används.</string>
+    <string name="workout_activity_permission_cancel">Inte nu</string>
+    <string name="workout_activity_permission_continue">Fortsätt</string>
+    <string name="workout_activity_permission_denied">Tillåt aktivitetsigenkänning för att kunna spela in passet när skärmen är släckt.</string>
 </resources>

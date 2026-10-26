@@ -258,4 +258,9 @@
     <string name="gym_workout_default_name">Gym workout</string>
     <string name="gym_workout_error_title">Could not start workout</string>
     <string name="gym_number_invalid">Enter a value in the allowed range.</string>
+    <string name="workout_activity_permission_title">Allow workout tracking</string>
+    <string name="workout_activity_permission_message">Android needs this permission to keep your workout running in the background when location access is not used.</string>
+    <string name="workout_activity_permission_cancel">Not now</string>
+    <string name="workout_activity_permission_continue">Continue</string>
+    <string name="workout_activity_permission_denied">Allow physical activity access to record workouts while the screen is off.</string>
 </resources>
