@@ -12,6 +12,7 @@ class PlanExercisePresentationTest {
 
     assertEquals("Knäböj", presentation.name)
     assertEquals("Stå med fötterna höftbrett.", presentation.instructions)
+    assertEquals(listOf("Stå med fötterna höftbrett."), presentation.instructionSteps)
   }
 
   @Test
@@ -38,6 +39,33 @@ class PlanExercisePresentationTest {
 
     assertEquals("Snapshot name", presentation.name)
     assertEquals("Snapshot instructions", presentation.instructions)
+  }
+
+  @Test
+  fun resolvesLegacyEnglishSnapshotToUniqueCanonicalSwedishExercise() {
+    val presentation =
+        planExercisePresentation(
+            "00000000-0000-0000-0000-000000000001",
+            "Bodyweight squat",
+            "Stand with feet hip-width apart.",
+            swedishCatalog)
+
+    assertEquals("Knäböj", presentation.name)
+    assertEquals("Stå med fötterna höftbrett.", presentation.instructions)
+    assertEquals(listOf("Stå med fötterna höftbrett."), presentation.instructionSteps)
+  }
+
+  @Test
+  fun doesNotResolveLegacySnapshotFromNameAlone() {
+    val presentation =
+        planExercisePresentation(
+            "00000000-0000-0000-0000-000000000001",
+            "Bodyweight squat",
+            "Different instructions.",
+            swedishCatalog)
+
+    assertEquals("Bodyweight squat", presentation.name)
+    assertEquals("Different instructions.", presentation.instructions)
   }
 
   private val swedishCatalog = ExerciseCatalog.parse(catalogJson, "sv-SE")

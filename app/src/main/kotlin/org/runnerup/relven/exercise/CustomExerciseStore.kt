@@ -291,7 +291,9 @@ internal class CustomExerciseStore(
           (if (language == "sv") input.instructionsSwedish else input.instructionsEnglish).trimmed(),
           isCustom = true,
           customInput = input,
-          isArchived = isArchived)
+          isArchived = isArchived,
+          nameEnglish = input.nameEnglish.trim(),
+          instructionsEnglish = input.instructionsEnglish.trimmed())
 
   private fun Record.toJson() =
       JSONObject()

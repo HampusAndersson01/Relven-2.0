@@ -27,7 +27,9 @@ internal data class ExerciseEntry(
     val instructions: List<String>,
     val isCustom: Boolean = false,
     val customInput: CustomExerciseInput? = null,
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    val nameEnglish: String = name,
+    val instructionsEnglish: List<String> = instructions
 )
 
 internal data class ExerciseCatalog(
@@ -129,6 +131,7 @@ internal data class ExerciseCatalog(
       val revision = source.requiredInt("revision")
       require(revision > 0) { "Exercise revision must be positive" }
       val name = source.requiredLocalizedString("name", language, maxLength = 120)
+      val nameEnglish = source.requiredLocalizedString("name", "en", maxLength = 120)
       val categoryKey = source.requiredString("category")
       val category = ExerciseCategory.fromKey(categoryKey)
           ?: throw IllegalArgumentException("Unknown exercise category")
@@ -138,8 +141,19 @@ internal data class ExerciseCatalog(
       muscleGroups.forEach { require(it in muscleGroupKeys) { "Unknown muscle group key" } }
       val equipment = source.requiredStringList("equipment", 0, 12, 80)
       val instructions = source.requiredLocalizedStringList("instructions", language, 1, 12, 500)
+      val instructionsEnglish =
+          source.requiredLocalizedStringList("instructions", "en", 1, 12, 500)
       return ExerciseEntry(
-          id, revision, name, category, movementPattern, muscleGroups, equipment, instructions)
+          id,
+          revision,
+          name,
+          category,
+          movementPattern,
+          muscleGroups,
+          equipment,
+          instructions,
+          nameEnglish = nameEnglish,
+          instructionsEnglish = instructionsEnglish)
     }
 
     private fun requireKeys(value: JSONObject, expected: Set<String>) {
