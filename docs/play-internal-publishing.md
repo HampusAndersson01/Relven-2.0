@@ -2,7 +2,7 @@
 
 The manual workflow at **Actions → Publish Relven to Play Internal Testing → Run workflow** supports two modes on `master`:
 
-- `VALIDATE_SIGNING_ONLY` builds and validates signed phone and Wear bundles, prints their shared public SHA-256 signing-certificate fingerprint in the Actions job summary, and does not restore the Play service-account secret or run either upload action.
+- `VALIDATE_SIGNING_ONLY` builds and validates signed phone and Wear bundles, prints both public SHA-256 signing-certificate fingerprints and the expected existing Play upload certificate in the Actions job summary before comparing them, and does not restore the Play service-account secret or run either upload action. If the comparison fails, the summary still shows the observed fingerprints needed to identify the keystore mismatch.
 - `PUBLISH_INTERNAL` builds, validates, and uploads the phone and Wear bundles to their internal testing tracks. This is the only mode that restores the Play service-account secret or can publish.
 
 Both modes require an even phone version code that exceeds the highest version code already uploaded for this app. Wear uses the next code. The current local phone build is `24000374`, so the default suggested first code is `24000376`; check Play Console before publishing and raise it if any track already contains a higher code.
@@ -45,4 +45,4 @@ For a credentials check, choose a valid even phone version code greater than `24
 
 Before publishing, check the highest uploaded phone/Wear version code in Play Console. Choose an even phone code greater than every code already uploaded, leave room for Wear's `+1`, type `PUBLISH_INTERNAL`, and start the workflow on `master`. GitHub Actions secrets are managed as described in [GitHub's Actions secrets guide](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets).
 
-The action validates both bundle signatures, package IDs, version codes, watch form-factor metadata, and matching upload certificates before upload. It uploads Wear to `wear:internal` and phone to `internal`. Google Play processes the two bundles in separate API calls, so if one upload succeeds and the other fails, check the two tracks in Play Console before retrying.
+The action validates both bundle signatures, package IDs, version codes, watch form-factor metadata, and matching upload certificates before upload. On a successful certificate check, the summary also confirms that both bundles match the existing Play upload certificate. It uploads Wear to `wear:internal` and phone to `internal`. Google Play processes the two bundles in separate API calls, so if one upload succeeds and the other fails, check the two tracks in Play Console before retrying.

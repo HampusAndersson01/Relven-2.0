@@ -92,6 +92,12 @@ class PlayInternalWorkflowTest(unittest.TestCase):
         self.assertIn("phone_cert", verification)
         self.assertIn("wear_cert", verification)
 
+    def test_signing_fingerprint_is_reported_before_existing_play_key_comparison(self):
+        verification = step_block(self.workflow, "Verify Play bundles before upload")
+        summary_write = verification.index('} >> "$GITHUB_STEP_SUMMARY"')
+        key_comparison = verification.index('if [[ "$phone_cert" != "$expected_upload_cert" ]]')
+        self.assertLess(summary_write, key_comparison)
+
 
 if __name__ == "__main__":
     unittest.main()
