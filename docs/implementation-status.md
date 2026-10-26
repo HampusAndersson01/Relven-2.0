@@ -1,6 +1,16 @@
-# Implementation status — 25 October 2026
+# Implementation status — 26 October 2026
 
-## Latest master checkpoint — Wear prepared-screen launch (PR #185)
+## Latest master checkpoint — PR #200
+
+- PR #200 merged to `master` as `e56b6c317fe52de3c1856025b855d28e5ccffa76`. It fixes Android 14+ workout foreground-service permission gating; a fresh install now requests Activity Recognition where required and does not start a foreground service with type `none`. The merged CI workflow passed. Local `:app:testLatestDebugUnitTest` passed 740 tests, `:app:assembleLatestDebug` and `:wear:assembleDebug` passed, `:app:lintLatestDebug` had no new issues (53 baseline findings filtered), and `spotlessCheck` passed.
+- Rebuilt phone APK from this exact master: `app/build/outputs/apk/latest/debug/app-latest-debug.apk`, package `se.hampusandersson.relven.debug`, version `2.0.0-dev-e56b6c31`, SHA-256 `FD87B30CBC531A8BC3442ED69732815F87EBF752EAA395B314FEA7B0AACB45A3`. Rebuilt Wear APK: `wear/build/outputs/apk/debug/wear-debug.apk`, debug package `se.hampusandersson.relven.debug`, version code `24000375`, SHA-256 `3F027572EC85C48A7D8CDE32BC2914D20F11DEF030C687F6432F0B8AE8EBC81F`. Release variants continue to use `se.hampusandersson.relven`.
+- On isolated ADB server port 5039, installed the phone APK on verified emulator `emulator-5581` (`ro.kernel.qemu=1`). A scheduled `Easy run · 30 min` opened its own preparation screen, retained its planned 30-minute workout, and entered RunnerUp's active run screen rather than the unrelated advanced default workout. Four simulated Stockholm GPS fixes produced a 37 m route; the Relven live screen showed the active target, GPS quality, map, route controls, and end action. Stopping opened Relven's review screen with the route, performance chart, split, notes, save, resume, and discard actions. The temporary QA workout was discarded. The transient “Passet kunde inte återställas” warning documented at the prior checkpoint did not reproduce during immediate or delayed preparation checks.
+- Installed and opened the latest Wear APK on isolated `Wear_OS_Small_Round_QA` at ADB port 5039. With no paired phone or prepared session, the watch correctly showed “Waiting for phone” and “No phone connected”. This verifies the current Wear launch surface only, not paired messaging or a workout handoff. That emulator was shut down after capture. Physical phone and watch ADB were not used.
+- Remaining release gates: complete paired phone/Wear lifecycle verification; exercise migration using a copied production-era v18 `relven-workouts.db`; and match the Play upload certificate. The configured signing secret produced a certificate mismatch in signing-only validation; no upload occurred. Targeted searches in Documents, Downloads, Desktop, OneDrive, and Google Drive did not locate the named database backup or a Relven upload keystore. Do not use the user's physical devices until the product is ready for manual testing.
+
+## Previous master checkpoint — Wear prepared-screen launch (PR #185)
+
+## Wear prepared-screen launch details (PR #185)
 
 - `master` is at `b84719ee6dea3ce229d1e439a15cab39fd534f1f`. PR #185 merged after its hosted Android/F-Droid workflow passed.
 - After a correlated `PREPARED` acknowledgement, both running and strength handoffs request `relven://workout/prepared` on the verified watch node through `RemoteActivityHelper`. Rejected, timed-out, and invalid preparation results do not request a launch. The existing prepared-workout notification remains the fallback; request delivery is not treated as proof that the watch UI became visible.
