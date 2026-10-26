@@ -109,18 +109,21 @@ public class TrackerServiceRecoveryTest {
       stopCheckpointTimerForElapsedTimeTest(restoredTracker);
       Shadows.shadowOf(Looper.getMainLooper()).idleFor(6, TimeUnit.MINUTES);
       android.os.PowerManager.WakeLock longRunWakeLock = wakeLockOf(restoredTracker);
-      assertTrue("active workout wake lock must outlive the setup timeout", longRunWakeLock.isHeld());
+      assertTrue(
+          "active workout wake lock must outlive the setup timeout", longRunWakeLock.isHeld());
 
       setApplyingWatchSessionCommand(restoredTracker, true);
       try {
         restoredTracker.pause();
-        assertFalse("pausing should release the active workout wake lock", longRunWakeLock.isHeld());
+        assertFalse(
+            "pausing should release the active workout wake lock", longRunWakeLock.isHeld());
         restoredTracker.resume();
         android.os.PowerManager.WakeLock resumedWakeLock = wakeLockOf(restoredTracker);
         assertTrue(
             "resuming should reacquire the active workout wake lock", resumedWakeLock.isHeld());
         restoredTracker.stop();
-        assertFalse("stopping should release the active workout wake lock", resumedWakeLock.isHeld());
+        assertFalse(
+            "stopping should release the active workout wake lock", resumedWakeLock.isHeld());
       } finally {
         setApplyingWatchSessionCommand(restoredTracker, false);
       }

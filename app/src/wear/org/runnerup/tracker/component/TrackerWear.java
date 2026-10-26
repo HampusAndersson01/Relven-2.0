@@ -268,8 +268,7 @@ public class TrackerWear extends DefaultTrackerComponent
 
   private void scheduleWearableReconnect(String reason) {
     if (!wearableConnectionActive || mGoogleApiClient == null) return;
-    long delayMs =
-        WearConnectionRetryPolicy.delayForAttempt(wearableConnectionRetryAttempt++);
+    long delayMs = WearConnectionRetryPolicy.delayForAttempt(wearableConnectionRetryAttempt++);
     Log.w(getName(), "Wear connection lost (" + reason + "); retrying in " + delayMs + " ms");
     handler.removeCallbacks(wearableConnectionRetry);
     handler.postDelayed(wearableConnectionRetry, delayMs);
@@ -280,8 +279,7 @@ public class TrackerWear extends DefaultTrackerComponent
     if (!wearableConnectionActive
         || client == null
         || client.isConnected()
-        || client.isConnecting())
-      return;
+        || client.isConnecting()) return;
     try {
       client.connect();
     } catch (RuntimeException exception) {

@@ -32,21 +32,18 @@ public class WearConnectionInitializationPolicyTest {
     ReconnectingWearComponent wear = new ReconnectingWearComponent();
     collection.addComponent(wear);
 
-    assertEquals(
-        ResultCode.RESULT_PENDING,
-        collection.onInit((component, result) -> {}, context));
+    assertEquals(ResultCode.RESULT_PENDING, collection.onInit((component, result) -> {}, context));
     wear.reportInitialConnectionFailure();
     Shadows.shadowOf(Looper.getMainLooper()).idle();
 
     assertEquals(ResultCode.RESULT_OK, collection.getResultCode(ReconnectingWearComponent.NAME));
     wear.reportSuccessfulReconnect();
-    assertEquals(
-        ResultCode.RESULT_OK,
-        collection.onConnecting((component, result) -> {}, context));
+    assertEquals(ResultCode.RESULT_OK, collection.onConnecting((component, result) -> {}, context));
 
     collection.onConnected();
     collection.onStart();
-    assertTrue("reconnected Wear component should receive workout lifecycle callbacks", wear.started);
+    assertTrue(
+        "reconnected Wear component should receive workout lifecycle callbacks", wear.started);
   }
 
   private static final class ReconnectingWearComponent extends DefaultTrackerComponent {
