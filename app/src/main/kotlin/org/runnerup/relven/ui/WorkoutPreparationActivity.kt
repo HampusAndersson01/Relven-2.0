@@ -45,8 +45,9 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
   private val gpsReadinessPublisher = GpsReadinessPublisher()
   private var selectedWorkoutRestoreState by
       mutableStateOf(SelectedWorkoutRestoreState.AVAILABLE)
+  private var selectedWorkoutLoaded = true
   private val selectedWorkoutAvailable: Boolean
-    get() = selectedWorkoutRestoreState == SelectedWorkoutRestoreState.AVAILABLE
+    get() = selectedWorkoutLoaded && selectedWorkoutRestoreState == SelectedWorkoutRestoreState.AVAILABLE
   private var transferStarted = false
   private var restoreSelectedWorkout = false
   private var trackerStartIssued = false
@@ -166,7 +167,11 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         val restored = restoreSelectedWorkoutFromIntent(activeTracker)
         restoreSelectedWorkout = false
         selectedWorkoutRestoreState =
-            selectedWorkoutRestoreState(restorePending = false, available = restored)
+                selectedWorkoutRestoreState(
+                    restorePending = false,
+                    available = restored,
+                    trackerState = activeTracker.state)
+        selectedWorkoutLoaded = restored
         if (!restored) {
           updateTrackerState()
           cancelCountdown("Det valda passet kunde inte läsas in")
@@ -212,13 +217,9 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
             activeTracker.setGpsReadinessListener { runOnUiThread(::updateGpsReadiness) }
             activeTracker.registerTrackerStateListener(trackerStateListener)
             connectTrackerForPreparation()
-            if (state.value.phase != WorkoutPreparationPhase.PREPARING) {
-              activeTracker.prepareWearWorkoutSession(
-                  state.value.sessionId, state.value.watchReady)
-              restoreCountdownIfNeeded()
-            }
           }
           updateTrackerState()
+          restoreCountdownIfNeeded()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -287,7 +288,8 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
             gpsReadiness = gpsReadiness,
             selectedWorkoutRestoreState = selectedWorkoutRestoreState,
             onStart = ::startWorkout,
-            onCancel = ::cancelPreparation)
+            onCancel = ::cancelPreparation,
+            onOpenExistingWorkout = ::openExistingWorkout)
       }
     }
     onBackPressedDispatcher.addCallback(
@@ -305,7 +307,13 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         },
         ContextCompat.RECEIVER_NOT_EXPORTED)
     sessionCommandReceiverRegistered = true
-    prepareWatch()
+  }
+
+  private fun openExistingWorkout() {
+    if (tracker?.state?.let(WorkoutPreparationTrackerPolicy::hasExistingWorkout) != true) return
+    // Keep this preparation Activity on the back stack. When the existing run ends, the
+    // Tracker listener below can retry restoring the explicitly selected plan workout.
+    startActivity(Intent(this, RunActivity::class.java))
   }
 
   private fun prepareWatch() {
@@ -340,7 +348,7 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
                     "Klockan kunde inte nås · fortsätt på mobilen"
                 }
             state.onWatchPreparationFinished(ready, status)
-            tracker?.prepareWearWorkoutSession(sessionId, ready)
+            attachWearSessionIfSafe()
             publishGpsReadinessIfReady()
             restoreCountdownIfNeeded()
           }
@@ -366,14 +374,26 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
 
   private fun updateTrackerState() {
     val activeTracker = tracker
+    restoreSelectedWorkoutIfConnected()
     if (activeTracker != null &&
         WorkoutPreparationTrackerPolicy.shouldFailSelectedWorkoutRestore(
             restorePending = restoreSelectedWorkout, state = activeTracker.state)) {
       restoreSelectedWorkout = false
-      selectedWorkoutRestoreState = SelectedWorkoutRestoreState.FAILED
+      selectedWorkoutLoaded = false
     }
-    restoreSelectedWorkoutIfConnected()
-    trackerReady = tracker?.state == TrackerState.CONNECTED && selectedWorkoutAvailable
+    selectedWorkoutRestoreState =
+        selectedWorkoutRestoreState(
+            restorePending = restoreSelectedWorkout,
+            available = selectedWorkoutLoaded,
+            trackerState = activeTracker?.state)
+    trackerReady =
+        activeTracker != null &&
+            WorkoutPreparationTrackerPolicy.shouldAttachWearSession(
+                workoutAvailable = selectedWorkoutAvailable, state = activeTracker.state)
+    if (trackerReady) {
+      attachWearSessionIfSafe()
+      if (!transferStarted) prepareWatch()
+    }
     updateGpsReadiness()
   }
 
@@ -383,8 +403,17 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         restorePending = restoreSelectedWorkout, state = activeTracker.state)) return
     val restored = restoreSelectedWorkoutFromIntent(activeTracker)
     restoreSelectedWorkout = false
+    selectedWorkoutLoaded = restored
     selectedWorkoutRestoreState =
-        selectedWorkoutRestoreState(restorePending = false, available = restored)
+        selectedWorkoutRestoreState(
+            restorePending = false, available = restored, trackerState = activeTracker.state)
+  }
+
+  private fun attachWearSessionIfSafe() {
+    val activeTracker = tracker ?: return
+    if (!WorkoutPreparationTrackerPolicy.shouldAttachWearSession(
+        workoutAvailable = selectedWorkoutAvailable, state = activeTracker.state)) return
+    activeTracker.prepareWearWorkoutSession(state.value.sessionId, state.value.watchReady)
   }
 
   private fun connectTrackerForPreparation() {
@@ -464,6 +493,8 @@ internal class WorkoutPreparationActivity : ComponentActivity() {
         return
       }
     }
+    if (!WorkoutPreparationTrackerPolicy.shouldAttachWearSession(
+        workoutAvailable = selectedWorkoutAvailable, state = activeTracker.state)) return
     activeTracker.prepareWearWorkoutSession(state.value.sessionId, state.value.watchReady)
     if (state.authority == org.runnerup.common.wear.WorkoutSessionProtocol.Actor.WATCH) {
       val request = state.createStartRequest(SystemClock.elapsedRealtime()) ?: return

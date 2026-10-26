@@ -32,7 +32,8 @@ internal fun WorkoutPreparationScreen(
     selectedWorkoutRestoreState: SelectedWorkoutRestoreState =
         SelectedWorkoutRestoreState.AVAILABLE,
     onStart: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onOpenExistingWorkout: () -> Unit = {}
 ) {
   Column(
       modifier =
@@ -85,7 +86,13 @@ internal fun WorkoutPreparationScreen(
               modifier = Modifier.size(20.dp), color = RelvenColors.Orange, strokeWidth = 2.dp)
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          Text(state.status, color = RelvenColors.Text, fontWeight = FontWeight.SemiBold)
+          Text(
+              text =
+                  if (selectedWorkoutRestoreState == SelectedWorkoutRestoreState.EXISTING_SESSION)
+                      "Pågående pass hittades"
+                  else state.status,
+              color = RelvenColors.Text,
+              fontWeight = FontWeight.SemiBold)
           if (selectedWorkoutRestoreState == SelectedWorkoutRestoreState.RESTORING) {
             Text(
                 "Återställer valt pass…",
@@ -96,13 +103,20 @@ internal fun WorkoutPreparationScreen(
                 "Passet kunde inte återställas. Avbryt och välj passet igen.",
                 color = RelvenColors.MutedText,
                 fontSize = 13.sp)
+          } else if (selectedWorkoutRestoreState == SelectedWorkoutRestoreState.EXISTING_SESSION) {
+            Text(
+                "Ett annat pass behöver avslutas först.",
+                color = RelvenColors.MutedText,
+                fontSize = 13.sp)
           }
-          Text(
-              text =
-                  if (state.watchReady) "Passet är överfört till klockan"
-                  else "Inspelningen startar först när du trycker på start",
-              color = RelvenColors.MutedText,
-              fontSize = 13.sp)
+          if (selectedWorkoutRestoreState != SelectedWorkoutRestoreState.EXISTING_SESSION) {
+            Text(
+                text =
+                    if (state.watchReady) "Passet är överfört till klockan"
+                    else "Inspelningen startar först när du trycker på start",
+                color = RelvenColors.MutedText,
+                fontSize = 13.sp)
+          }
         }
       }
     }
@@ -160,6 +174,8 @@ internal fun WorkoutPreparationScreen(
                     "Förbereder träningsmotorn"
                 selectedWorkoutRestoreState == SelectedWorkoutRestoreState.FAILED ->
                     "Passet kunde inte återställas"
+                selectedWorkoutRestoreState == SelectedWorkoutRestoreState.EXISTING_SESSION ->
+                    "Avsluta pågående pass först"
                 state.phase == WorkoutPreparationPhase.START_REQUESTED -> "Väntar på klockan"
                 state.phase == WorkoutPreparationPhase.CANCEL_REQUESTED -> "Avbryter nedräkning"
                 state.phase == WorkoutPreparationPhase.COUNTDOWN -> "Startar om ${state.countdownValue}"
@@ -169,6 +185,14 @@ internal fun WorkoutPreparationScreen(
           color = RelvenColors.Background,
           fontWeight = FontWeight.Bold,
           fontSize = 17.sp)
+    }
+    if (selectedWorkoutRestoreState == SelectedWorkoutRestoreState.EXISTING_SESSION) {
+      OutlinedButton(
+          onClick = onOpenExistingWorkout,
+          modifier = Modifier.fillMaxWidth().height(54.dp),
+          shape = RoundedCornerShape(18.dp)) {
+        Text("Öppna pågående pass", color = RelvenColors.Text)
+      }
     }
     OutlinedButton(
         onClick = onCancel,
