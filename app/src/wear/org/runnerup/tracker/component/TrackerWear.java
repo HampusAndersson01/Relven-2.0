@@ -89,6 +89,8 @@ public class TrackerWear extends DefaultTrackerComponent
   private boolean wearableConnectionActive;
   private boolean wearableListenersRegistered;
   private int wearableConnectionRetryAttempt;
+  private WearConnectionInitializationPolicy connectionInitializationPolicy;
+  private Callback connectionInitializationCallback;
 
   private final Handler handler = new Handler();
   private final Runnable scheduledWatchStartRunnable = this::startScheduledWatchSession;
@@ -205,6 +207,8 @@ public class TrackerWear extends DefaultTrackerComponent
       return ResultCode.RESULT_NOT_SUPPORTED;
     }
 
+    connectionInitializationPolicy = new WearConnectionInitializationPolicy();
+    connectionInitializationCallback = callback;
     tracker.registerTrackerStateListener(this);
     mWearableClient = new WearableClient(context);
     mGoogleApiClient =
@@ -213,9 +217,10 @@ public class TrackerWear extends DefaultTrackerComponent
                 new GoogleApiClient.ConnectionCallbacks() {
                   @Override
                   public void onConnected(Bundle connectionHint) {
+                    if (!wearableConnectionActive) return;
                     handler.removeCallbacks(wearableConnectionRetry);
                     wearableConnectionRetryAttempt = 0;
-                    callback.run(TrackerWear.this, ResultCode.RESULT_OK);
+                    resolveConnectionInitialization();
 
                     /* set "our" data */
                     setData();
@@ -241,13 +246,24 @@ public class TrackerWear extends DefaultTrackerComponent
                 })
             .addOnConnectionFailedListener(
                 result -> {
-                  callback.run(TrackerWear.this, ResultCode.RESULT_ERROR);
+                  // Wear is optional for phone workouts. Resolve initialization so the phone can
+                  // proceed, then keep retrying the transport in case it becomes available.
+                  resolveConnectionInitialization();
                   scheduleWearableReconnect("connection failed: " + result.getErrorCode());
                 })
             .addApi(Wearable.API)
             .build();
     mGoogleApiClient.connect();
     return ResultCode.RESULT_PENDING;
+  }
+
+  private void resolveConnectionInitialization() {
+    if (connectionInitializationPolicy == null) return;
+    ResultCode result = connectionInitializationPolicy.resolve();
+    Callback callback = connectionInitializationCallback;
+    if (result == null || callback == null) return;
+    connectionInitializationCallback = null;
+    callback.run(this, result);
   }
 
   private void scheduleWearableReconnect(String reason) {
@@ -934,6 +950,8 @@ public class TrackerWear extends DefaultTrackerComponent
   @Override
   public ResultCode onEnd(Callback callback, Context context) {
     wearableConnectionActive = false;
+    connectionInitializationCallback = null;
+    connectionInitializationPolicy = null;
     handler.removeCallbacks(wearableConnectionRetry);
     handler.removeCallbacks(pendingPhoneSessionRequestRetry);
     pendingPhoneSessionRequest = null;
